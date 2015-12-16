@@ -25,17 +25,17 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.util.Objects.requireNonNull;
 
-public class ExampleTable
+public class ThriftTable
 {
     private final String name;
-    private final List<ExampleColumn> columns;
+    private final List<ThriftColumn> columns;
     private final List<ColumnMetadata> columnsMetadata;
     private final List<URI> sources;
 
     @JsonCreator
-    public ExampleTable(
+    public ThriftTable(
             @JsonProperty("name") String name,
-            @JsonProperty("columns") List<ExampleColumn> columns,
+            @JsonProperty("columns") List<ThriftColumn> columns,
             @JsonProperty("sources") List<URI> sources)
     {
         checkArgument(!isNullOrEmpty(name), "name is null or is empty");
@@ -44,7 +44,7 @@ public class ExampleTable
         this.sources = ImmutableList.copyOf(requireNonNull(sources, "sources is null"));
 
         ImmutableList.Builder<ColumnMetadata> columnsMetadata = ImmutableList.builder();
-        for (ExampleColumn column : this.columns) {
+        for (ThriftColumn column : this.columns) {
             columnsMetadata.add(new ColumnMetadata(column.getName(), column.getType(), false));
         }
         this.columnsMetadata = columnsMetadata.build();
@@ -57,7 +57,7 @@ public class ExampleTable
     }
 
     @JsonProperty
-    public List<ExampleColumn> getColumns()
+    public List<ThriftColumn> getColumns()
     {
         return columns;
     }

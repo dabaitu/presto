@@ -42,15 +42,15 @@ import static com.facebook.presto.thrift.Types.checkType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
-public class ExampleMetadata
+public class ThriftMetadata
         implements ConnectorMetadata
 {
     private final String connectorId;
 
-    private final ExampleClient exampleClient;
+    private final ThriftClient exampleClient;
 
     @Inject
-    public ExampleMetadata(ExampleConnectorId connectorId, ExampleClient exampleClient)
+    public ThriftMetadata(ThriftConnectorId connectorId, ThriftClient exampleClient)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
         this.exampleClient = requireNonNull(exampleClient, "client is null");
@@ -68,26 +68,26 @@ public class ExampleMetadata
     }
 
     @Override
-    public ExampleTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName)
+    public ThriftTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName)
     {
         if (!listSchemaNames(session).contains(tableName.getSchemaName())) {
             return null;
         }
 
-        ExampleTable table = exampleClient.getTable(tableName.getSchemaName(), tableName.getTableName());
+        ThriftTable table = exampleClient.getTable(tableName.getSchemaName(), tableName.getTableName());
         if (table == null) {
             return null;
         }
 
-        return new ExampleTableHandle(connectorId, tableName.getSchemaName(), tableName.getTableName());
+        return new ThriftTableHandle(connectorId, tableName.getSchemaName(), tableName.getTableName());
     }
 
     @Override
     public List<ConnectorTableLayoutResult> getTableLayouts(ConnectorSession session, ConnectorTableHandle table, Constraint<ColumnHandle> constraint, Optional<Set<ColumnHandle>> desiredColumns)
     {
-        ExampleTableHandle tableHandle = checkType(table, ExampleTableHandle.class, "table");
+        ThriftTableHandle tableHandle = checkType(table, ThriftTableHandle.class, "table");
         ConnectorTableLayout layout = new ConnectorTableLayout(
-                new ExampleTableLayoutHandle(tableHandle),
+                new ThriftTableLayoutHandle(tableHandle),
                 Optional.empty(),
                 TupleDomain.<ColumnHandle>all(),
                 Optional.empty(),
@@ -99,14 +99,14 @@ public class ExampleMetadata
     @Override
     public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
     {
-        ExampleTableLayoutHandle layout = checkType(handle, ExampleTableLayoutHandle.class, "layout");
+        ThriftTableLayoutHandle layout = checkType(handle, ThriftTableLayoutHandle.class, "layout");
         return new ConnectorTableLayout(layout, Optional.empty(), TupleDomain.<ColumnHandle>all(), Optional.empty(), Optional.empty(), ImmutableList.of());
     }
 
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table)
     {
-        ExampleTableHandle exampleTableHandle = checkType(table, ExampleTableHandle.class, "table");
+        ThriftTableHandle exampleTableHandle = checkType(table, ThriftTableHandle.class, "table");
         checkArgument(exampleTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
         SchemaTableName tableName = new SchemaTableName(exampleTableHandle.getSchemaName(), exampleTableHandle.getTableName());
 
@@ -136,10 +136,10 @@ public class ExampleMetadata
     @Override
     public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        ExampleTableHandle exampleTableHandle = checkType(tableHandle, ExampleTableHandle.class, "tableHandle");
+        ThriftTableHandle exampleTableHandle = checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
         checkArgument(exampleTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
 
-        ExampleTable table = exampleClient.getTable(exampleTableHandle.getSchemaName(), exampleTableHandle.getTableName());
+        ThriftTable table = exampleClient.getTable(exampleTableHandle.getSchemaName(), exampleTableHandle.getTableName());
         if (table == null) {
             throw new TableNotFoundException(exampleTableHandle.toSchemaTableName());
         }
@@ -147,7 +147,7 @@ public class ExampleMetadata
         ImmutableMap.Builder<String, ColumnHandle> columnHandles = ImmutableMap.builder();
         int index = 0;
         for (ColumnMetadata column : table.getColumnsMetadata()) {
-            columnHandles.put(column.getName(), new ExampleColumnHandle(connectorId, column.getName(), column.getType(), index));
+            columnHandles.put(column.getName(), new ThriftColumnHandle(connectorId, column.getName(), column.getType(), index));
             index++;
         }
         return columnHandles.build();
@@ -174,7 +174,7 @@ public class ExampleMetadata
             return null;
         }
 
-        ExampleTable table = exampleClient.getTable(tableName.getSchemaName(), tableName.getTableName());
+        ThriftTable table = exampleClient.getTable(tableName.getSchemaName(), tableName.getTableName());
         if (table == null) {
             return null;
         }
@@ -193,7 +193,7 @@ public class ExampleMetadata
     @Override
     public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle)
     {
-        checkType(tableHandle, ExampleTableHandle.class, "tableHandle");
-        return checkType(columnHandle, ExampleColumnHandle.class, "columnHandle").getColumnMetadata();
+        checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
+        return checkType(columnHandle, ThriftColumnHandle.class, "columnHandle").getColumnMetadata();
     }
 }

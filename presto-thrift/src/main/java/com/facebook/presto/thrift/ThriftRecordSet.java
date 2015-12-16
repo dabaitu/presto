@@ -26,20 +26,20 @@ import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
-public class ExampleRecordSet
+public class ThriftRecordSet
         implements RecordSet
 {
-    private final List<ExampleColumnHandle> columnHandles;
+    private final List<ThriftColumnHandle> columnHandles;
     private final List<Type> columnTypes;
     private final ByteSource byteSource;
 
-    public ExampleRecordSet(ExampleSplit split, List<ExampleColumnHandle> columnHandles)
+    public ThriftRecordSet(ThriftSplit split, List<ThriftColumnHandle> columnHandles)
     {
         requireNonNull(split, "split is null");
 
         this.columnHandles = requireNonNull(columnHandles, "column handles is null");
         ImmutableList.Builder<Type> types = ImmutableList.builder();
-        for (ExampleColumnHandle column : columnHandles) {
+        for (ThriftColumnHandle column : columnHandles) {
             types.add(column.getColumnType());
         }
         this.columnTypes = types.build();
@@ -61,6 +61,6 @@ public class ExampleRecordSet
     @Override
     public RecordCursor cursor()
     {
-        return new ExampleRecordCursor(columnHandles, byteSource);
+        return new ThriftRecordCursor(columnHandles, byteSource);
     }
 }

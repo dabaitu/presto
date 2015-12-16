@@ -26,7 +26,7 @@ import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
 
-public class ExamplePlugin
+public class ThriftPlugin
         implements Plugin
 {
     private TypeManager typeManager;
@@ -53,7 +53,7 @@ public class ExamplePlugin
     public synchronized <T> List<T> getServices(Class<T> type)
     {
         if (type == ConnectorFactory.class) {
-            return ImmutableList.of(type.cast(new ExampleConnectorFactory(typeManager, getOptionalConfig())));
+            return ImmutableList.of(type.cast(new ThriftConnectorFactory(typeManager, getOptionalConfig())));
         }
         return ImmutableList.of();
     }

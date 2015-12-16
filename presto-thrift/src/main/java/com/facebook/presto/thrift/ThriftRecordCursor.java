@@ -35,12 +35,12 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class ExampleRecordCursor
+public class ThriftRecordCursor
         implements RecordCursor
 {
     private static final Splitter LINE_SPLITTER = Splitter.on(",").trimResults();
 
-    private final List<ExampleColumnHandle> columnHandles;
+    private final List<ThriftColumnHandle> columnHandles;
     private final int[] fieldToColumnIndex;
 
     private final Iterator<String> lines;
@@ -48,13 +48,13 @@ public class ExampleRecordCursor
 
     private List<String> fields;
 
-    public ExampleRecordCursor(List<ExampleColumnHandle> columnHandles, ByteSource byteSource)
+    public ThriftRecordCursor(List<ThriftColumnHandle> columnHandles, ByteSource byteSource)
     {
         this.columnHandles = columnHandles;
 
         fieldToColumnIndex = new int[columnHandles.size()];
         for (int i = 0; i < columnHandles.size(); i++) {
-            ExampleColumnHandle columnHandle = columnHandles.get(i);
+            ThriftColumnHandle columnHandle = columnHandles.get(i);
             fieldToColumnIndex[i] = columnHandle.getOrdinalPosition();
         }
 

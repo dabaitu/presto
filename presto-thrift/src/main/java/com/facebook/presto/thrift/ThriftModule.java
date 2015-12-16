@@ -31,13 +31,13 @@ import static io.airlift.json.JsonCodec.listJsonCodec;
 import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static java.util.Objects.requireNonNull;
 
-public class ExampleModule
+public class ThriftModule
         implements Module
 {
     private final String connectorId;
     private final TypeManager typeManager;
 
-    public ExampleModule(String connectorId, TypeManager typeManager)
+    public ThriftModule(String connectorId, TypeManager typeManager)
     {
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
@@ -48,17 +48,17 @@ public class ExampleModule
     {
         binder.bind(TypeManager.class).toInstance(typeManager);
 
-        binder.bind(ExampleConnector.class).in(Scopes.SINGLETON);
-        binder.bind(ExampleConnectorId.class).toInstance(new ExampleConnectorId(connectorId));
-        binder.bind(ExampleMetadata.class).in(Scopes.SINGLETON);
-        binder.bind(ExampleClient.class).in(Scopes.SINGLETON);
-        binder.bind(ExampleSplitManager.class).in(Scopes.SINGLETON);
-        binder.bind(ExampleRecordSetProvider.class).in(Scopes.SINGLETON);
-        binder.bind(ExampleHandleResolver.class).in(Scopes.SINGLETON);
-        configBinder(binder).bindConfig(ExampleConfig.class);
+        binder.bind(ThriftConnector.class).in(Scopes.SINGLETON);
+        binder.bind(ThriftConnectorId.class).toInstance(new ThriftConnectorId(connectorId));
+        binder.bind(ThriftMetadata.class).in(Scopes.SINGLETON);
+        binder.bind(ThriftClient.class).in(Scopes.SINGLETON);
+        binder.bind(ThriftSplitManager.class).in(Scopes.SINGLETON);
+        binder.bind(ThriftRecordSetProvider.class).in(Scopes.SINGLETON);
+        binder.bind(ThriftHandleResolver.class).in(Scopes.SINGLETON);
+        configBinder(binder).bindConfig(ThriftConfig.class);
 
         jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
-        jsonCodecBinder(binder).bindMapJsonCodec(String.class, listJsonCodec(ExampleTable.class));
+        jsonCodecBinder(binder).bindMapJsonCodec(String.class, listJsonCodec(ThriftTable.class));
     }
 
     public static final class TypeDeserializer

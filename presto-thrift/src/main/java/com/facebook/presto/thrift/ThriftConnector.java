@@ -25,24 +25,24 @@ import javax.inject.Inject;
 
 import static java.util.Objects.requireNonNull;
 
-public class ExampleConnector
+public class ThriftConnector
         implements Connector
 {
-    private static final Logger log = Logger.get(ExampleConnector.class);
+    private static final Logger log = Logger.get(ThriftConnector.class);
 
     private final LifeCycleManager lifeCycleManager;
-    private final ExampleMetadata metadata;
-    private final ExampleSplitManager splitManager;
-    private final ExampleRecordSetProvider recordSetProvider;
-    private final ExampleHandleResolver handleResolver;
+    private final ThriftMetadata metadata;
+    private final ThriftSplitManager splitManager;
+    private final ThriftRecordSetProvider recordSetProvider;
+    private final ThriftHandleResolver handleResolver;
 
     @Inject
-    public ExampleConnector(
+    public ThriftConnector(
             LifeCycleManager lifeCycleManager,
-            ExampleMetadata metadata,
-            ExampleSplitManager splitManager,
-            ExampleRecordSetProvider recordSetProvider,
-            ExampleHandleResolver handleResolver)
+            ThriftMetadata metadata,
+            ThriftSplitManager splitManager,
+            ThriftRecordSetProvider recordSetProvider,
+            ThriftHandleResolver handleResolver)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.metadata = requireNonNull(metadata, "metadata is null");

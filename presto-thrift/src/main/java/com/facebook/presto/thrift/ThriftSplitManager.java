@@ -31,14 +31,14 @@ import static com.facebook.presto.thrift.Types.checkType;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
-public class ExampleSplitManager
+public class ThriftSplitManager
         implements ConnectorSplitManager
 {
     private final String connectorId;
-    private final ExampleClient exampleClient;
+    private final ThriftClient exampleClient;
 
     @Inject
-    public ExampleSplitManager(ExampleConnectorId connectorId, ExampleClient exampleClient)
+    public ThriftSplitManager(ThriftConnectorId connectorId, ThriftClient exampleClient)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
         this.exampleClient = requireNonNull(exampleClient, "client is null");
@@ -47,15 +47,15 @@ public class ExampleSplitManager
     @Override
     public ConnectorSplitSource getSplits(ConnectorSession session, ConnectorTableLayoutHandle layout)
     {
-        ExampleTableLayoutHandle layoutHandle = checkType(layout, ExampleTableLayoutHandle.class, "layout");
-        ExampleTableHandle tableHandle = layoutHandle.getTable();
-        ExampleTable table = exampleClient.getTable(tableHandle.getSchemaName(), tableHandle.getTableName());
+        ThriftTableLayoutHandle layoutHandle = checkType(layout, ThriftTableLayoutHandle.class, "layout");
+        ThriftTableHandle tableHandle = layoutHandle.getTable();
+        ThriftTable table = exampleClient.getTable(tableHandle.getSchemaName(), tableHandle.getTableName());
         // this can happen if table is removed during a query
         checkState(table != null, "Table %s.%s no longer exists", tableHandle.getSchemaName(), tableHandle.getTableName());
 
         List<ConnectorSplit> splits = new ArrayList<>();
         for (URI uri : table.getSources()) {
-            splits.add(new ExampleSplit(connectorId, tableHandle.getSchemaName(), tableHandle.getTableName(), uri));
+            splits.add(new ThriftSplit(connectorId, tableHandle.getSchemaName(), tableHandle.getTableName(), uri));
         }
         Collections.shuffle(splits);
 

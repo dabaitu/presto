@@ -28,13 +28,13 @@ import static com.facebook.presto.thrift.Types.checkType;
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.util.Objects.requireNonNull;
 
-public class ExampleRecordSetProvider
+public class ThriftRecordSetProvider
         implements ConnectorRecordSetProvider
 {
     private final String connectorId;
 
     @Inject
-    public ExampleRecordSetProvider(ExampleConnectorId connectorId)
+    public ThriftRecordSetProvider(ThriftConnectorId connectorId)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
     }
@@ -43,14 +43,14 @@ public class ExampleRecordSetProvider
     public RecordSet getRecordSet(ConnectorSession session, ConnectorSplit split, List<? extends ColumnHandle> columns)
     {
         requireNonNull(split, "partitionChunk is null");
-        ExampleSplit exampleSplit = checkType(split, ExampleSplit.class, "split");
+        ThriftSplit exampleSplit = checkType(split, ExampleSplit.class, "split");
         checkArgument(exampleSplit.getConnectorId().equals(connectorId), "split is not for this connector");
 
-        ImmutableList.Builder<ExampleColumnHandle> handles = ImmutableList.builder();
+        ImmutableList.Builder<ThriftColumnHandle> handles = ImmutableList.builder();
         for (ColumnHandle handle : columns) {
-            handles.add(checkType(handle, ExampleColumnHandle.class, "handle"));
+            handles.add(checkType(handle, ThriftColumnHandle.class, "handle"));
         }
 
-        return new ExampleRecordSet(exampleSplit, handles.build());
+        return new ThriftRecordSet(exampleSplit, handles.build());
     }
 }

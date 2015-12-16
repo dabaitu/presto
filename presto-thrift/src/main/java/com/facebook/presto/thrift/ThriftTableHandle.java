@@ -23,7 +23,7 @@ import java.util.Objects;
 
 import static java.util.Objects.requireNonNull;
 
-public final class ExampleTableHandle
+public final class ThriftTableHandle
         implements ConnectorTableHandle
 {
     private final String connectorId;
@@ -31,7 +31,7 @@ public final class ExampleTableHandle
     private final String tableName;
 
     @JsonCreator
-    public ExampleTableHandle(
+    public ThriftTableHandle(
             @JsonProperty("connectorId") String connectorId,
             @JsonProperty("schemaName") String schemaName,
             @JsonProperty("tableName") String tableName)
@@ -80,7 +80,7 @@ public final class ExampleTableHandle
             return false;
         }
 
-        ExampleTableHandle other = (ExampleTableHandle) obj;
+        ThriftTableHandle other = (ThriftTableHandle) obj;
         return Objects.equals(this.connectorId, other.connectorId) &&
                 Objects.equals(this.schemaName, other.schemaName) &&
                 Objects.equals(this.tableName, other.tableName);

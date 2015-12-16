@@ -24,7 +24,7 @@ import java.util.Objects;
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
-public final class ExampleColumnHandle
+public final class ThriftColumnHandle
         implements ColumnHandle
 {
     private final String connectorId;
@@ -33,7 +33,7 @@ public final class ExampleColumnHandle
     private final int ordinalPosition;
 
     @JsonCreator
-    public ExampleColumnHandle(
+    public ThriftColumnHandle(
             @JsonProperty("connectorId") String connectorId,
             @JsonProperty("columnName") String columnName,
             @JsonProperty("columnType") Type columnType,
@@ -90,7 +90,7 @@ public final class ExampleColumnHandle
             return false;
         }
 
-        ExampleColumnHandle other = (ExampleColumnHandle) obj;
+        ThriftColumnHandle other = (ThriftColumnHandle) obj;
         return Objects.equals(this.connectorId, other.connectorId) &&
                 Objects.equals(this.columnName, other.columnName);
     }

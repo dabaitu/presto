@@ -24,7 +24,7 @@ import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
-public class ExampleSplit
+public class ThriftSplit
         implements ConnectorSplit
 {
     private final String connectorId;
@@ -35,7 +35,7 @@ public class ExampleSplit
     private final ImmutableList<HostAddress> addresses;
 
     @JsonCreator
-    public ExampleSplit(
+    public ThriftSplit(
             @JsonProperty("connectorId") String connectorId,
             @JsonProperty("schemaName") String schemaName,
             @JsonProperty("tableName") String tableName,

@@ -26,13 +26,13 @@ import java.util.Map;
 
 import static java.util.Objects.requireNonNull;
 
-public class ExampleConnectorFactory
+public class ThriftConnectorFactory
         implements ConnectorFactory
 {
     private final TypeManager typeManager;
     private final Map<String, String> optionalConfig;
 
-    public ExampleConnectorFactory(TypeManager typeManager, Map<String, String> optionalConfig)
+    public ThriftConnectorFactory(TypeManager typeManager, Map<String, String> optionalConfig)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.optionalConfig = ImmutableMap.copyOf(requireNonNull(optionalConfig, "optionalConfig is null"));
@@ -41,7 +41,7 @@ public class ExampleConnectorFactory
     @Override
     public String getName()
     {
-        return "example-http";
+        return "thrift"; // TODO: should be 'thrift-lzo'?
     }
 
     @Override
@@ -54,7 +54,7 @@ public class ExampleConnectorFactory
             // A plugin is not required to use Guice; it is just very convenient
             Bootstrap app = new Bootstrap(
                     new JsonModule(),
-                    new ExampleModule(connectorId, typeManager));
+                    new ThriftModule(connectorId, typeManager));
 
         Injector injector = app
                     .strictConfig()
@@ -63,7 +63,7 @@ public class ExampleConnectorFactory
                     .setOptionalConfigurationProperties(optionalConfig)
                     .initialize();
 
-            return injector.getInstance(ExampleConnector.class);
+            return injector.getInstance(ThriftConnector.class);
         }
         catch (Exception e) {
             throw Throwables.propagate(e);

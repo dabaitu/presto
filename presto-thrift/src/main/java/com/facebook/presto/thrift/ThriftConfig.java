@@ -19,7 +19,7 @@ import javax.validation.constraints.NotNull;
 
 import java.net.URI;
 
-public class ExampleConfig
+public class ThriftConfig
 {
     private URI metadata;
 
@@ -30,7 +30,7 @@ public class ExampleConfig
     }
 
     @Config("metadata-uri")
-    public ExampleConfig setMetadata(URI metadata)
+    public ThriftConfig setMetadata(URI metadata)
     {
         this.metadata = metadata;
         return this;

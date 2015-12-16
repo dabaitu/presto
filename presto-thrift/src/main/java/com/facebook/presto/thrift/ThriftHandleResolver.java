@@ -23,13 +23,13 @@ import javax.inject.Inject;
 
 import static java.util.Objects.requireNonNull;
 
-public class ExampleHandleResolver
+public class ThriftHandleResolver
         implements ConnectorHandleResolver
 {
     private final String connectorId;
 
     @Inject
-    public ExampleHandleResolver(ExampleConnectorId clientId)
+    public ThriftHandleResolver(ThriftConnectorId clientId)
     {
         this.connectorId = requireNonNull(clientId, "clientId is null").toString();
     }
@@ -37,48 +37,48 @@ public class ExampleHandleResolver
     @Override
     public boolean canHandle(ConnectorTableHandle tableHandle)
     {
-        return tableHandle instanceof ExampleTableHandle && ((ExampleTableHandle) tableHandle).getConnectorId().equals(connectorId);
+        return tableHandle instanceof ThriftTableHandle && ((ThriftTableHandle) tableHandle).getConnectorId().equals(connectorId);
     }
 
     @Override
     public boolean canHandle(ColumnHandle columnHandle)
     {
-        return columnHandle instanceof ExampleColumnHandle && ((ExampleColumnHandle) columnHandle).getConnectorId().equals(connectorId);
+        return columnHandle instanceof ThriftColumnHandle && ((ThriftColumnHandle) columnHandle).getConnectorId().equals(connectorId);
     }
 
     @Override
     public boolean canHandle(ConnectorSplit split)
     {
-        return split instanceof ExampleSplit && ((ExampleSplit) split).getConnectorId().equals(connectorId);
+        return split instanceof ThriftSplit && ((ExampleSplit) split).getConnectorId().equals(connectorId);
     }
 
     @Override
     public boolean canHandle(ConnectorTableLayoutHandle handle)
     {
-        return handle instanceof ExampleTableLayoutHandle;
+        return handle instanceof ThriftTableLayoutHandle;
     }
 
     @Override
     public Class<? extends ConnectorTableLayoutHandle> getTableLayoutHandleClass()
     {
-        return ExampleTableLayoutHandle.class;
+        return ThriftTableLayoutHandle.class;
     }
 
     @Override
     public Class<? extends ConnectorTableHandle> getTableHandleClass()
     {
-        return ExampleTableHandle.class;
+        return ThriftTableHandle.class;
     }
 
     @Override
     public Class<? extends ColumnHandle> getColumnHandleClass()
     {
-        return ExampleColumnHandle.class;
+        return ThriftColumnHandle.class;
     }
 
     @Override
     public Class<? extends ConnectorSplit> getSplitClass()
     {
-        return ExampleSplit.class;
+        return ThriftSplit.class;
     }
 }

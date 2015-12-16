@@ -23,13 +23,13 @@ import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
 import static java.util.Objects.requireNonNull;
 
-public final class ExampleColumn
+public final class ThriftColumn
 {
     private final String name;
     private final Type type;
 
     @JsonCreator
-    public ExampleColumn(
+    public ThriftColumn(
             @JsonProperty("name") String name,
             @JsonProperty("type") Type type)
     {
@@ -66,7 +66,7 @@ public final class ExampleColumn
             return false;
         }
 
-        ExampleColumn other = (ExampleColumn) obj;
+        ThriftColumn other = (ExampleColumn) obj;
         return Objects.equals(this.name, other.name) &&
                 Objects.equals(this.type, other.type);
     }
