@@ -49,7 +49,7 @@ public class ThriftHandleResolver
     @Override
     public boolean canHandle(ConnectorSplit split)
     {
-        return split instanceof ThriftSplit && ((ExampleSplit) split).getConnectorId().equals(connectorId);
+        return split instanceof ThriftSplit && ((ThriftSplit) split).getConnectorId().equals(connectorId);
     }
 
     @Override

@@ -53,7 +53,7 @@ public class ThriftMetadata
     public ThriftMetadata(ThriftConnectorId connectorId, ThriftClient thriftClient)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
-        this.thriftClient = requireNonNull(exampleClient, "client is null");
+        this.thriftClient = requireNonNull(thriftClient, "client is null");
     }
 
     @Override

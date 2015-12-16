@@ -66,7 +66,7 @@ public final class ThriftColumn
             return false;
         }
 
-        ThriftColumn other = (ExampleColumn) obj;
+        ThriftColumn other = (ThriftColumn) obj;
         return Objects.equals(this.name, other.name) &&
                 Objects.equals(this.type, other.type);
     }

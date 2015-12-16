@@ -81,7 +81,7 @@ public class ThriftClient
         return tables.get(tableName);
     }
 
-    private static Supplier<Map<String, Map<String, ThriftTable>>> schemasSupplier(final JsonCodec<Map<String, List<ExampleTable>>> catalogCodec, final URI metadataUri)
+    private static Supplier<Map<String, Map<String, ThriftTable>>> schemasSupplier(final JsonCodec<Map<String, List<ThriftTable>>> catalogCodec, final URI metadataUri)
     {
         return () -> {
             try {
@@ -93,7 +93,7 @@ public class ThriftClient
         };
     }
 
-    private static Map<String, Map<String, ThriftTable>> lookupSchemas(URI metadataUri, JsonCodec<Map<String, List<ExampleTable>>> catalogCodec)
+    private static Map<String, Map<String, ThriftTable>> lookupSchemas(URI metadataUri, JsonCodec<Map<String, List<ThriftTable>>> catalogCodec)
             throws IOException
     {
         URL result = metadataUri.toURL();
@@ -103,7 +103,7 @@ public class ThriftClient
         return ImmutableMap.copyOf(transformValues(catalog, resolveAndIndexTables(metadataUri)));
     }
 
-    private static Function<List<ThriftTable>, Map<String, ExampleTable>> resolveAndIndexTables(final URI metadataUri)
+    private static Function<List<ThriftTable>, Map<String, ThriftTable>> resolveAndIndexTables(final URI metadataUri)
     {
         return tables -> {
             Iterable<ThriftTable> resolvedTables = transform(tables, tableUriResolver(metadataUri));
@@ -111,7 +111,7 @@ public class ThriftClient
         };
     }
 
-    private static Function<ThriftTable, ExampleTable> tableUriResolver(final URI baseUri)
+    private static Function<ThriftTable, ThriftTable> tableUriResolver(final URI baseUri)
     {
         return table -> {
             List<URI> sources = ImmutableList.copyOf(transform(table.getSources(), baseUri::resolve));
