@@ -48,6 +48,7 @@
         <dep.airlift.version>0.116</dep.airlift.version>
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.slice.version>0.15</dep.slice.version>
+        <dep.elephantbird.version>4.10</dep.elephantbird.version>
 
         <cli.skip-execute>true</cli.skip-execute>
         <cli.main-class>None</cli.main-class>
@@ -95,6 +96,7 @@
         <module>presto-server-rpm</module>
         <module>presto-docs</module>
         <module>presto-verifier</module>
+        <module>presto-thrift</module>
         <module>presto-testing-server-launcher</module>
     </modules>
 
@@ -665,6 +667,12 @@
                 <groupId>com.orange.redis-embedded</groupId>
                 <artifactId>embedded-redis</artifactId>
                 <version>0.6</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.twitter.elephantbird</groupId>
+                <artifactId>elephant-bird</artifactId>
+                <version>${dep.elephantbird.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
