@@ -35,13 +35,13 @@ public class ThriftSplitManager
         implements ConnectorSplitManager
 {
     private final String connectorId;
-    private final ThriftClient exampleClient;
+    private final ThriftClient thriftClient;
 
     @Inject
-    public ThriftSplitManager(ThriftConnectorId connectorId, ThriftClient exampleClient)
+    public ThriftSplitManager(ThriftConnectorId connectorId, ThriftClient thriftClient)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
-        this.exampleClient = requireNonNull(exampleClient, "client is null");
+        this.thriftClient = requireNonNull(exampleClient, "client is null");
     }
 
     @Override
@@ -49,7 +49,7 @@ public class ThriftSplitManager
     {
         ThriftTableLayoutHandle layoutHandle = checkType(layout, ThriftTableLayoutHandle.class, "layout");
         ThriftTableHandle tableHandle = layoutHandle.getTable();
-        ThriftTable table = exampleClient.getTable(tableHandle.getSchemaName(), tableHandle.getTableName());
+        ThriftTable table = thriftClient.getTable(tableHandle.getSchemaName(), tableHandle.getTableName());
         // this can happen if table is removed during a query
         checkState(table != null, "Table %s.%s no longer exists", tableHandle.getSchemaName(), tableHandle.getTableName());
 

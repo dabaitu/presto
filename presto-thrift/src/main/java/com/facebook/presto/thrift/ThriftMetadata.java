@@ -47,13 +47,13 @@ public class ThriftMetadata
 {
     private final String connectorId;
 
-    private final ThriftClient exampleClient;
+    private final ThriftClient thriftClient;
 
     @Inject
-    public ThriftMetadata(ThriftConnectorId connectorId, ThriftClient exampleClient)
+    public ThriftMetadata(ThriftConnectorId connectorId, ThriftClient thriftClient)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
-        this.exampleClient = requireNonNull(exampleClient, "client is null");
+        this.thriftClient = requireNonNull(exampleClient, "client is null");
     }
 
     @Override
@@ -64,7 +64,7 @@ public class ThriftMetadata
 
     public List<String> listSchemaNames()
     {
-        return ImmutableList.copyOf(exampleClient.getSchemaNames());
+        return ImmutableList.copyOf(thriftClient.getSchemaNames());
     }
 
     @Override
@@ -74,7 +74,7 @@ public class ThriftMetadata
             return null;
         }
 
-        ThriftTable table = exampleClient.getTable(tableName.getSchemaName(), tableName.getTableName());
+        ThriftTable table = thriftClient.getTable(tableName.getSchemaName(), tableName.getTableName());
         if (table == null) {
             return null;
         }
@@ -106,9 +106,9 @@ public class ThriftMetadata
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table)
     {
-        ThriftTableHandle exampleTableHandle = checkType(table, ThriftTableHandle.class, "table");
-        checkArgument(exampleTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
-        SchemaTableName tableName = new SchemaTableName(exampleTableHandle.getSchemaName(), exampleTableHandle.getTableName());
+        ThriftTableHandle thriftTableHandle = checkType(table, ThriftTableHandle.class, "table");
+        checkArgument(thriftTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
+        SchemaTableName tableName = new SchemaTableName(thriftTableHandle.getSchemaName(), thriftTableHandle.getTableName());
 
         return getTableMetadata(tableName);
     }
@@ -121,12 +121,12 @@ public class ThriftMetadata
             schemaNames = ImmutableSet.of(schemaNameOrNull);
         }
         else {
-            schemaNames = exampleClient.getSchemaNames();
+            schemaNames = thriftClient.getSchemaNames();
         }
 
         ImmutableList.Builder<SchemaTableName> builder = ImmutableList.builder();
         for (String schemaName : schemaNames) {
-            for (String tableName : exampleClient.getTableNames(schemaName)) {
+            for (String tableName : thriftClient.getTableNames(schemaName)) {
                 builder.add(new SchemaTableName(schemaName, tableName));
             }
         }
@@ -136,12 +136,12 @@ public class ThriftMetadata
     @Override
     public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
-        ThriftTableHandle exampleTableHandle = checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
-        checkArgument(exampleTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
+        ThriftTableHandle thriftTableHandle = checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
+        checkArgument(thriftTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
 
-        ThriftTable table = exampleClient.getTable(exampleTableHandle.getSchemaName(), exampleTableHandle.getTableName());
+        ThriftTable table = thriftClient.getTable(thriftTableHandle.getSchemaName(), thriftTableHandle.getTableName());
         if (table == null) {
-            throw new TableNotFoundException(exampleTableHandle.toSchemaTableName());
+            throw new TableNotFoundException(thriftTableHandle.toSchemaTableName());
         }
 
         ImmutableMap.Builder<String, ColumnHandle> columnHandles = ImmutableMap.builder();
@@ -174,7 +174,7 @@ public class ThriftMetadata
             return null;
         }
 
-        ThriftTable table = exampleClient.getTable(tableName.getSchemaName(), tableName.getTableName());
+        ThriftTable table = thriftClient.getTable(tableName.getSchemaName(), tableName.getTableName());
         if (table == null) {
             return null;
         }

@@ -43,14 +43,14 @@ public class ThriftRecordSetProvider
     public RecordSet getRecordSet(ConnectorSession session, ConnectorSplit split, List<? extends ColumnHandle> columns)
     {
         requireNonNull(split, "partitionChunk is null");
-        ThriftSplit exampleSplit = checkType(split, ExampleSplit.class, "split");
-        checkArgument(exampleSplit.getConnectorId().equals(connectorId), "split is not for this connector");
+        ThriftSplit thriftSplit = checkType(split, ExampleSplit.class, "split");
+        checkArgument(thriftSplit.getConnectorId().equals(connectorId), "split is not for this connector");
 
         ImmutableList.Builder<ThriftColumnHandle> handles = ImmutableList.builder();
         for (ColumnHandle handle : columns) {
             handles.add(checkType(handle, ThriftColumnHandle.class, "handle"));
         }
 
-        return new ThriftRecordSet(exampleSplit, handles.build());
+        return new ThriftRecordSet(thriftSplit, handles.build());
     }
 }
