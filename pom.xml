@@ -240,6 +240,12 @@
             </dependency>
 
             <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-thrift</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
                 <groupId>com.facebook.presto.hadoop</groupId>
                 <artifactId>hadoop-apache1</artifactId>
                 <version>0.2</version>
@@ -671,7 +677,7 @@
 
             <dependency>
                 <groupId>com.twitter.elephantbird</groupId>
-                <artifactId>elephant-bird</artifactId>
+                <artifactId>elephant-bird-core</artifactId>
                 <version>${dep.elephantbird.version}</version>
             </dependency>
         </dependencies>

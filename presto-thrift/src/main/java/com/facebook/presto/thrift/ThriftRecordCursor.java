@@ -20,6 +20,7 @@ import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.google.common.io.ByteSource;
 import com.google.common.io.CountingInputStream;
+import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
 import io.airlift.slice.Slices;
 
@@ -38,6 +39,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public class ThriftRecordCursor
         implements RecordCursor
 {
+    private static final Logger log = Logger.get(ThriftRecordCursor.class);
+
     private static final Splitter LINE_SPLITTER = Splitter.on(",").trimResults();
 
     private final List<ThriftColumnHandle> columnHandles;

@@ -28,20 +28,27 @@ import static java.util.Objects.requireNonNull;
 public class ThriftTable
 {
     private final String name;
-    private final List<ThriftColumn> columns;
-    private final List<ColumnMetadata> columnsMetadata;
+    private final List<ThriftColumn> columns; // XXX Remove
+    private final List<ColumnMetadata> columnsMetadata; // REMOVE
     private final List<URI> sources;
+    private final String thriftClassName; // fetch from
+    private final boolean datehourPartitioned;
 
     @JsonCreator
     public ThriftTable(
             @JsonProperty("name") String name,
             @JsonProperty("columns") List<ThriftColumn> columns,
-            @JsonProperty("sources") List<URI> sources)
+            @JsonProperty("sources") List<URI> sources
+            // @JsonProperty("thrift_class_name") String thriftClassName,
+            // @JsonProperty("datehour_partitioned") boolean datehourPartitioned
+            )
     {
         checkArgument(!isNullOrEmpty(name), "name is null or is empty");
         this.name = requireNonNull(name, "name is null");
         this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
         this.sources = ImmutableList.copyOf(requireNonNull(sources, "sources is null"));
+        this.thriftClassName = "unknown"; // XXX requireNonNull(thriftClassName, "thrift class name is null");
+        this.datehourPartitioned = false; //XXX  datehourPartitioned;
 
         ImmutableList.Builder<ColumnMetadata> columnsMetadata = ImmutableList.builder();
         for (ThriftColumn column : this.columns) {

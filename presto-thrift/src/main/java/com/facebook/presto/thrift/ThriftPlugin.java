@@ -18,6 +18,7 @@ import com.facebook.presto.spi.Plugin;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.log.Logger;
 
 import javax.inject.Inject;
 
@@ -29,6 +30,8 @@ import static java.util.Objects.requireNonNull;
 public class ThriftPlugin
         implements Plugin
 {
+    public static final Logger log = Logger.get(ThriftPlugin.class); // XXX Remove
+
     private TypeManager typeManager;
     private Map<String, String> optionalConfig = ImmutableMap.of();
 
@@ -53,8 +56,14 @@ public class ThriftPlugin
     public synchronized <T> List<T> getServices(Class<T> type)
     {
         if (type == ConnectorFactory.class) {
+            log.info("XXX Returning ThriftConnectorFactory");
             return ImmutableList.of(type.cast(new ThriftConnectorFactory(typeManager, getOptionalConfig())));
         }
         return ImmutableList.of();
+    }
+
+    public static void tmplog(String message, Object... args)
+    {
+        log.info("XXX " + message, args);
     }
 }

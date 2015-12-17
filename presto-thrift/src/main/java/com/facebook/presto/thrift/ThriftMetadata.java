@@ -59,17 +59,20 @@ public class ThriftMetadata
     @Override
     public List<String> listSchemaNames(ConnectorSession session)
     {
+        ThriftPlugin.tmplog("schemaNames 1");
         return listSchemaNames();
     }
 
     public List<String> listSchemaNames()
     {
+        ThriftPlugin.tmplog("schemaNames 2");
         return ImmutableList.copyOf(thriftClient.getSchemaNames());
     }
 
     @Override
     public ThriftTableHandle getTableHandle(ConnectorSession session, SchemaTableName tableName)
     {
+        ThriftPlugin.tmplog("getTableHandle");
         if (!listSchemaNames(session).contains(tableName.getSchemaName())) {
             return null;
         }
@@ -85,6 +88,7 @@ public class ThriftMetadata
     @Override
     public List<ConnectorTableLayoutResult> getTableLayouts(ConnectorSession session, ConnectorTableHandle table, Constraint<ColumnHandle> constraint, Optional<Set<ColumnHandle>> desiredColumns)
     {
+        ThriftPlugin.tmplog("getTableLayouts");
         ThriftTableHandle tableHandle = checkType(table, ThriftTableHandle.class, "table");
         ConnectorTableLayout layout = new ConnectorTableLayout(
                 new ThriftTableLayoutHandle(tableHandle),
@@ -99,6 +103,7 @@ public class ThriftMetadata
     @Override
     public ConnectorTableLayout getTableLayout(ConnectorSession session, ConnectorTableLayoutHandle handle)
     {
+        ThriftPlugin.tmplog("getTableLayout");
         ThriftTableLayoutHandle layout = checkType(handle, ThriftTableLayoutHandle.class, "layout");
         return new ConnectorTableLayout(layout, Optional.empty(), TupleDomain.<ColumnHandle>all(), Optional.empty(), Optional.empty(), ImmutableList.of());
     }
@@ -106,6 +111,7 @@ public class ThriftMetadata
     @Override
     public ConnectorTableMetadata getTableMetadata(ConnectorSession session, ConnectorTableHandle table)
     {
+        ThriftPlugin.tmplog("getTableMetadata");
         ThriftTableHandle thriftTableHandle = checkType(table, ThriftTableHandle.class, "table");
         checkArgument(thriftTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
         SchemaTableName tableName = new SchemaTableName(thriftTableHandle.getSchemaName(), thriftTableHandle.getTableName());
@@ -116,6 +122,7 @@ public class ThriftMetadata
     @Override
     public List<SchemaTableName> listTables(ConnectorSession session, String schemaNameOrNull)
     {
+        ThriftPlugin.tmplog("listTables");
         Set<String> schemaNames;
         if (schemaNameOrNull != null) {
             schemaNames = ImmutableSet.of(schemaNameOrNull);
@@ -136,6 +143,7 @@ public class ThriftMetadata
     @Override
     public Map<String, ColumnHandle> getColumnHandles(ConnectorSession session, ConnectorTableHandle tableHandle)
     {
+        ThriftPlugin.tmplog("getColumnHandles");
         ThriftTableHandle thriftTableHandle = checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
         checkArgument(thriftTableHandle.getConnectorId().equals(connectorId), "tableHandle is not for this connector");
 
@@ -156,6 +164,7 @@ public class ThriftMetadata
     @Override
     public Map<SchemaTableName, List<ColumnMetadata>> listTableColumns(ConnectorSession session, SchemaTablePrefix prefix)
     {
+        ThriftPlugin.tmplog("listTableColumns");
         requireNonNull(prefix, "prefix is null");
         ImmutableMap.Builder<SchemaTableName, List<ColumnMetadata>> columns = ImmutableMap.builder();
         for (SchemaTableName tableName : listTables(session, prefix)) {
@@ -193,6 +202,7 @@ public class ThriftMetadata
     @Override
     public ColumnMetadata getColumnMetadata(ConnectorSession session, ConnectorTableHandle tableHandle, ColumnHandle columnHandle)
     {
+        ThriftPlugin.tmplog("getColumnMetadata");
         checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
         return checkType(columnHandle, ThriftColumnHandle.class, "columnHandle").getColumnMetadata();
     }

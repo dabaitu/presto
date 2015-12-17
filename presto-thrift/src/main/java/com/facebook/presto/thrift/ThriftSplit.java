@@ -32,7 +32,7 @@ public class ThriftSplit
     private final String tableName;
     private final URI uri;
     private final boolean remotelyAccessible;
-    private final ImmutableList<HostAddress> addresses;
+    private final List<HostAddress> addresses;
 
     @JsonCreator
     public ThriftSplit(
@@ -46,7 +46,6 @@ public class ThriftSplit
         this.tableName = requireNonNull(tableName, "table name is null");
         this.uri = requireNonNull(uri, "uri is null");
 
-//        if ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) {
         remotelyAccessible = true;
         addresses = ImmutableList.of(HostAddress.fromUri(uri));
     }
