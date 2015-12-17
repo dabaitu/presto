@@ -16,12 +16,11 @@ package com.facebook.presto.thrift;
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.RecordSet;
 import com.facebook.presto.spi.type.Type;
-import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.ByteSource;
-import com.google.common.io.Resources;
+import com.google.common.io.Files;
 
-import java.net.MalformedURLException;
+import java.io.File;
 import java.util.List;
 
 import static java.util.Objects.requireNonNull;
@@ -44,12 +43,7 @@ public class ThriftRecordSet
         }
         this.columnTypes = types.build();
 
-        try {
-            byteSource = Resources.asByteSource(split.getUri().toURL());
-        }
-        catch (MalformedURLException e) {
-            throw Throwables.propagate(e);
-        }
+        byteSource = Files.asByteSource(new File(split.getUri()));
     }
 
     @Override

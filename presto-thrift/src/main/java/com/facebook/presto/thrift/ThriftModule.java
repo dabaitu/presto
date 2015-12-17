@@ -39,6 +39,7 @@ public class ThriftModule
 
     public ThriftModule(String connectorId, TypeManager typeManager)
     {
+        ThriftPlugin.tmplog(" connectorId : " + connectorId);
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
     }

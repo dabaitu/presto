@@ -115,7 +115,7 @@ public class ThriftClient
     {
         return table -> {
             List<URI> sources = ImmutableList.copyOf(transform(table.getSources(), baseUri::resolve));
-            return new ThriftTable(table.getName(), table.getColumns(), sources);
+            return new ThriftTable(table.getName(), table.getColumns(), sources, "XXX", false);
         };
     }
 }
