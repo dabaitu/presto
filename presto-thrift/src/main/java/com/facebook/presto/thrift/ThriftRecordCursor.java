@@ -44,7 +44,7 @@ public class ThriftRecordCursor
     private static final Splitter LINE_SPLITTER = Splitter.on(",").trimResults();
 
     private final List<ThriftColumnHandle> columnHandles;
-    private final int[] fieldToColumnIndex;
+    private final short[] fieldToThriftId;
 
     private final Iterator<String> lines;
     private final long totalBytes;
@@ -55,10 +55,10 @@ public class ThriftRecordCursor
     {
         this.columnHandles = columnHandles;
 
-        fieldToColumnIndex = new int[columnHandles.size()];
+        fieldToThriftId = new short[columnHandles.size()];
         for (int i = 0; i < columnHandles.size(); i++) {
             ThriftColumnHandle columnHandle = columnHandles.get(i);
-            fieldToColumnIndex[i] = columnHandle.getOrdinalPosition();
+            fieldToThriftId[i] = columnHandle.getThriftFieldId();
         }
 
         try (CountingInputStream input = new CountingInputStream(byteSource.openStream())) {
@@ -111,7 +111,7 @@ public class ThriftRecordCursor
     {
         checkState(fields != null, "Cursor has not been advanced yet");
 
-        int columnIndex = fieldToColumnIndex[field];
+        int columnIndex = fieldToThriftId[field];
         return fields.get(columnIndex);
     }
 

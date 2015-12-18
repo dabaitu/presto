@@ -56,7 +56,7 @@ public class ThriftConnectorFactory
                     new JsonModule(),
                     new ThriftModule(connectorId, typeManager));
 
-        Injector injector = app
+            Injector injector = app
                     .strictConfig()
                     .doNotInitializeLogging()
                     .setRequiredConfigurationProperties(requiredConfig)

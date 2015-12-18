@@ -27,9 +27,14 @@ import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.SchemaTablePrefix;
 import com.facebook.presto.spi.TableNotFoundException;
 import com.facebook.presto.spi.TupleDomain;
+import com.facebook.presto.spi.type.TypeManager;
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.twitter.elephantbird.util.ThriftUtils;
 
 import javax.inject.Inject;
 
@@ -46,13 +51,19 @@ public class ThriftMetadata
         implements ConnectorMetadata
 {
     private final String connectorId;
-
+    private final TypeManager typeManager;
     private final ThriftClient thriftClient;
 
+    // cache of class name -> ThriftColumnMetadata
+    private LoadingCache<String, ThriftColumnMetadata> columnMetadataCache = CacheBuilder
+        .newBuilder()
+        .build(CacheLoader.from(this::getColumnMetadataForClass));
+
     @Inject
-    public ThriftMetadata(ThriftConnectorId connectorId, ThriftClient thriftClient)
+    public ThriftMetadata(ThriftConnectorId connectorId, TypeManager typeManager, ThriftClient thriftClient)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
+        this.typeManager = requireNonNull(typeManager, "typeManager is null");
         this.thriftClient = requireNonNull(thriftClient, "client is null");
     }
 
@@ -152,10 +163,13 @@ public class ThriftMetadata
             throw new TableNotFoundException(thriftTableHandle.toSchemaTableName());
         }
 
+        ThriftColumnMetadata metadata = columnMetadataCache.getUnchecked(table.getThriftClassName());
+
         ImmutableMap.Builder<String, ColumnHandle> columnHandles = ImmutableMap.builder();
         int index = 0;
-        for (ColumnMetadata column : table.getColumnsMetadata()) {
-            columnHandles.put(column.getName(), new ThriftColumnHandle(connectorId, column.getName(), column.getType(), index));
+        for (ColumnMetadata column : metadata.getColumnMetadata()) {
+            short thriftId = metadata.getThriftIds().get(index);
+            columnHandles.put(column.getName(), new ThriftColumnHandle(connectorId, column.getName(), column.getType(), thriftId));
             index++;
         }
         return columnHandles.build();
@@ -188,7 +202,8 @@ public class ThriftMetadata
             return null;
         }
 
-        return new ConnectorTableMetadata(tableName, table.getColumnsMetadata());
+        ThriftColumnMetadata metadata = columnMetadataCache.getUnchecked(table.getThriftClassName());
+        return new ConnectorTableMetadata(tableName, metadata.getColumnMetadata());
     }
 
     private List<SchemaTableName> listTables(ConnectorSession session, SchemaTablePrefix prefix)
@@ -205,5 +220,13 @@ public class ThriftMetadata
         ThriftPlugin.tmplog("getColumnMetadata");
         checkType(tableHandle, ThriftTableHandle.class, "tableHandle");
         return checkType(columnHandle, ThriftColumnHandle.class, "columnHandle").getColumnMetadata();
+    }
+
+    private ThriftColumnMetadata getColumnMetadataForClass(String className)
+    {
+        return ThriftToPresto.prestoColumnMetadata(
+            ThriftUtils.getTypeRef(className).getRawClass(),
+            typeManager
+        );
     }
 }

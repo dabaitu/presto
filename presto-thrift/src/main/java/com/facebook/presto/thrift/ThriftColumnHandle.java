@@ -30,19 +30,19 @@ public final class ThriftColumnHandle
     private final String connectorId;
     private final String columnName;
     private final Type columnType;
-    private final int ordinalPosition;
+    private final short thriftFieldId;
 
     @JsonCreator
     public ThriftColumnHandle(
             @JsonProperty("connectorId") String connectorId,
             @JsonProperty("columnName") String columnName,
             @JsonProperty("columnType") Type columnType,
-            @JsonProperty("ordinalPosition") int ordinalPosition)
+            @JsonProperty("thriftFieldId") short thriftFieldId)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.columnName = requireNonNull(columnName, "columnName is null");
         this.columnType = requireNonNull(columnType, "columnType is null");
-        this.ordinalPosition = ordinalPosition;
+        this.thriftFieldId = thriftFieldId;
     }
 
     @JsonProperty
@@ -64,9 +64,9 @@ public final class ThriftColumnHandle
     }
 
     @JsonProperty
-    public int getOrdinalPosition()
+    public short getThriftFieldId()
     {
-        return ordinalPosition;
+        return thriftFieldId;
     }
 
     public ColumnMetadata getColumnMetadata()
@@ -102,7 +102,7 @@ public final class ThriftColumnHandle
                 .add("connectorId", connectorId)
                 .add("columnName", columnName)
                 .add("columnType", columnType)
-                .add("ordinalPosition", ordinalPosition)
+                .add("thriftFieldId", thriftFieldId)
                 .toString();
     }
 }
