@@ -30,6 +30,7 @@ public class ThriftRecordSet
 {
     private final List<ThriftColumnHandle> columnHandles;
     private final List<Type> columnTypes;
+    private final String thriftClassName;
     private final ByteSource byteSource;
 
     public ThriftRecordSet(ThriftSplit split, List<ThriftColumnHandle> columnHandles)
@@ -43,6 +44,7 @@ public class ThriftRecordSet
         }
         this.columnTypes = types.build();
 
+        thriftClassName = split.getThriftClassName();
         byteSource = Files.asByteSource(new File(split.getUri()));
     }
 
@@ -55,6 +57,6 @@ public class ThriftRecordSet
     @Override
     public RecordCursor cursor()
     {
-        return new ThriftRecordCursor(columnHandles, byteSource);
+        return new ThriftRecordCursor(columnHandles, thriftClassName, byteSource);
     }
 }

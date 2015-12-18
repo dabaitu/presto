@@ -55,7 +55,8 @@ public class ThriftSplitManager
 
         List<ConnectorSplit> splits = new ArrayList<>();
         for (URI uri : table.getSources()) {
-            splits.add(new ThriftSplit(connectorId, tableHandle.getSchemaName(), tableHandle.getTableName(), uri));
+            splits.add(new ThriftSplit(connectorId, tableHandle.getSchemaName(),
+                tableHandle.getTableName(), uri, table.getThriftClassName()));
         }
         Collections.shuffle(splits);
 

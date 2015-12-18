@@ -113,6 +113,7 @@
         <dependency>
             <groupId>com.facebook.presto.hadoop</groupId>
             <artifactId>hadoop-apache2</artifactId>
+            <scope>runtime</scope>
             <!-- TODO should be provided scope>runtime</scope -->
         </dependency>        
 

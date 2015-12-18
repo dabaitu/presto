@@ -15,23 +15,24 @@ package com.facebook.presto.thrift;
 
 import com.facebook.presto.spi.RecordCursor;
 import com.facebook.presto.spi.type.Type;
-import com.google.common.base.Splitter;
-import com.google.common.base.Strings;
 import com.google.common.base.Throwables;
 import com.google.common.io.ByteSource;
 import com.google.common.io.CountingInputStream;
+import com.twitter.elephantbird.util.ThriftUtils;
+import com.twitter.elephantbird.util.TypeRef;
 import io.airlift.log.Logger;
 import io.airlift.slice.Slice;
-import io.airlift.slice.Slices;
+import org.apache.thrift.TBase;
+import org.apache.thrift.TDeserializer;
 
 import java.io.IOException;
+import java.util.Base64;
 import java.util.Iterator;
 import java.util.List;
 
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -41,19 +42,22 @@ public class ThriftRecordCursor
 {
     private static final Logger log = Logger.get(ThriftRecordCursor.class);
 
-    private static final Splitter LINE_SPLITTER = Splitter.on(",").trimResults();
-
-    private final List<ThriftColumnHandle> columnHandles;
+    private final ThriftColumnHandle[] columnHandles;
     private final short[] fieldToThriftId;
 
     private final Iterator<String> lines;
     private final long totalBytes;
 
-    private List<String> fields;
+    private TBase curThriftValue = null;
 
-    public ThriftRecordCursor(List<ThriftColumnHandle> columnHandles, ByteSource byteSource)
+    // thrift related. should be moved to another class
+    private final TDeserializer tDeserializer = new TDeserializer(); // change this to one in EB once 4.11 is released
+    private final TypeRef<? extends TBase<?, ?>> tTypeRef;
+    private final ThriftToPresto thriftToPresto;
+
+    public ThriftRecordCursor(List<ThriftColumnHandle> columnHandles, String thriftClassName, ByteSource byteSource)
     {
-        this.columnHandles = columnHandles;
+        this.columnHandles = columnHandles.toArray(new ThriftColumnHandle[columnHandles.size()]);
 
         fieldToThriftId = new short[columnHandles.size()];
         for (int i = 0; i < columnHandles.size(); i++) {
@@ -68,6 +72,8 @@ public class ThriftRecordCursor
         catch (IOException e) {
             throw Throwables.propagate(e);
         }
+        tTypeRef = ThriftUtils.getTypeRef(thriftClassName);
+        thriftToPresto = new ThriftToPresto(tTypeRef.getRawClass());
     }
 
     @Override
@@ -91,69 +97,78 @@ public class ThriftRecordCursor
     @Override
     public Type getType(int field)
     {
-        checkArgument(field < columnHandles.size(), "Invalid field index");
-        return columnHandles.get(field).getColumnType();
+        checkArgument(field < columnHandles.length, "Invalid field index");
+        return columnHandles[field].getColumnType();
     }
 
     @Override
     public boolean advanceNextPosition()
     {
-        if (!lines.hasNext()) {
-            return false;
+        while (true) {
+            curThriftValue = null;
+            if (!lines.hasNext()) {
+                return false;
+            }
+            String line = lines.next();
+            TBase tObj = tTypeRef.safeNewInstance();
+            try {
+                tDeserializer.deserialize(tObj, Base64.getDecoder().decode(line));
+                curThriftValue = tObj;
+                return true;
+            }
+            catch (Exception e) {
+                log.warn(e, "Exception while decoding '" + line + "'");
+            }
         }
-        String line = lines.next();
-        fields = LINE_SPLITTER.splitToList(line);
-
-        return true;
     }
 
-    private String getFieldValue(int field)
+    private Object getFieldValue(int field)
     {
-        checkState(fields != null, "Cursor has not been advanced yet");
+        checkState(curThriftValue != null, "Cursor has not been advanced yet");
 
-        int columnIndex = fieldToThriftId[field];
-        return fields.get(columnIndex);
+        return thriftToPresto.getPrestoValue(
+            columnHandles[field].getColumnType(),
+            fieldToThriftId[field],
+            curThriftValue);
     }
 
     @Override
     public boolean getBoolean(int field)
     {
         checkFieldType(field, BOOLEAN);
-        return Boolean.parseBoolean(getFieldValue(field));
+        return (Boolean) getFieldValue(field);
     }
 
     @Override
     public long getLong(int field)
     {
         checkFieldType(field, BIGINT);
-        return Long.parseLong(getFieldValue(field));
+        return (Long) getFieldValue(field);
     }
 
     @Override
     public double getDouble(int field)
     {
         checkFieldType(field, DOUBLE);
-        return Double.parseDouble(getFieldValue(field));
+        return (Double) getFieldValue(field);
     }
 
     @Override
     public Slice getSlice(int field)
     {
-        checkFieldType(field, VARCHAR);
-        return Slices.utf8Slice(getFieldValue(field));
+        return (Slice) getFieldValue(field);
     }
 
     @Override
     public Object getObject(int field)
     {
-        throw new UnsupportedOperationException();
+        return getFieldValue(field);
     }
 
     @Override
     public boolean isNull(int field)
     {
-        checkArgument(field < columnHandles.size(), "Invalid field index");
-        return Strings.isNullOrEmpty(getFieldValue(field));
+        return getFieldValue(field) == null;
     }
 
     private void checkFieldType(int field, Type expected)

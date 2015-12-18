@@ -31,23 +31,24 @@ public class ThriftSplit
     private final String schemaName;
     private final String tableName;
     private final URI uri;
+    private final String thriftClassName;
     private final boolean remotelyAccessible;
-    private final List<HostAddress> addresses;
 
     @JsonCreator
     public ThriftSplit(
             @JsonProperty("connectorId") String connectorId,
             @JsonProperty("schemaName") String schemaName,
             @JsonProperty("tableName") String tableName,
-            @JsonProperty("uri") URI uri)
+            @JsonProperty("uri") URI uri,
+            @JsonProperty("thriftClassName") String thriftClassName)
     {
         this.schemaName = requireNonNull(schemaName, "schema name is null");
         this.connectorId = requireNonNull(connectorId, "connector id is null");
         this.tableName = requireNonNull(tableName, "table name is null");
         this.uri = requireNonNull(uri, "uri is null");
+        this.thriftClassName = requireNonNull(thriftClassName, "thriftClassName is null");
 
         remotelyAccessible = true;
-        addresses = ImmutableList.of(HostAddress.fromUri(uri));
     }
 
     @JsonProperty
@@ -74,6 +75,12 @@ public class ThriftSplit
         return uri;
     }
 
+    @JsonProperty
+    public String getThriftClassName()
+    {
+        return thriftClassName;
+    }
+
     @Override
     public boolean isRemotelyAccessible()
     {
@@ -84,7 +91,7 @@ public class ThriftSplit
     @Override
     public List<HostAddress> getAddresses()
     {
-        return addresses;
+        return ImmutableList.of(); // XXX What should we return?
     }
 
     @Override
