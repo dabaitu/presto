@@ -31,8 +31,9 @@ public class ThriftTable
     private final String name;
     private final List<URI> sources;
     private final String thriftClassName;
-    private final boolean datehourPartitioned;
+    private final boolean datehourPartitioned; // TODO
     private final Class<? extends TBase<?, ?>> tClass; // XXX may be not required here
+    private final String thirfProtocol = "binary"; // TODO (binary or compact)
 
     @JsonCreator
     public ThriftTable(

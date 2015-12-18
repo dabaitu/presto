@@ -344,7 +344,7 @@ public class ThriftToPresto
         ImmutableList.Builder<Short> ids = ImmutableList.builder();
         for (Field field : tDesc.getFields()) {
             // TODO: handle reserved tokens in names (user?)
-            columns.add(new ColumnMetadata(field.getName(), prestoType(field, typeManager), false));
+            columns.add(new ColumnMetadata(field.getName().toLowerCase(), prestoType(field, typeManager), false));
             ids.add(field.getFieldId());
         }
 
@@ -356,7 +356,7 @@ public class ThriftToPresto
         ImmutableList.Builder<TypeSignature> types = ImmutableList.builder();
         ImmutableList.Builder<Object> names = ImmutableList.builder();
         for (Field field : tDesc.getFields()) {
-            names.add(field.getName());
+            names.add(field.getName().toLowerCase());
             types.add(prestoType(field, typeManager).getTypeSignature());
         }
         return typeManager.getParameterizedType(StandardTypes.ROW, types.build(), names.build());

@@ -110,6 +110,9 @@ public class ThriftRecordCursor
                 return false;
             }
             String line = lines.next();
+            if (line.length() == 0) {
+                continue;
+            }
             TBase tObj = tTypeRef.safeNewInstance();
             try {
                 tDeserializer.deserialize(tObj, Base64.getDecoder().decode(line));
