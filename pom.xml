@@ -49,6 +49,7 @@
         <dep.packaging.version>${dep.airlift.version}</dep.packaging.version>
         <dep.slice.version>0.18</dep.slice.version>
         <dep.aws-sdk.version>1.9.40</dep.aws-sdk.version>
+        <dep.elephantbird.version>4.10</dep.elephantbird.version>
 
         <cli.skip-execute>true</cli.skip-execute>
         <cli.main-class>None</cli.main-class>
@@ -97,6 +98,7 @@
         <module>presto-server-rpm</module>
         <module>presto-docs</module>
         <module>presto-verifier</module>
+        <module>presto-thrift</module>
         <module>presto-testing-server-launcher</module>
     </modules>
 
@@ -248,6 +250,12 @@
             <dependency>
                 <groupId>com.facebook.presto</groupId>
                 <artifactId>presto-product-tests</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.facebook.presto</groupId>
+                <artifactId>presto-thrift</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -690,6 +698,12 @@
                 <groupId>com.orange.redis-embedded</groupId>
                 <artifactId>embedded-redis</artifactId>
                 <version>0.6</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.twitter.elephantbird</groupId>
+                <artifactId>elephant-bird-core</artifactId>
+                <version>${dep.elephantbird.version}</version>
             </dependency>
 
             <dependency>
