@@ -21,44 +21,21 @@ import static java.util.Objects.requireNonNull;
 public class ComparisonExpression
         extends Expression
 {
-    public enum Type
-    {
-        EQUAL("="),
-        NOT_EQUAL("<>"),
-        LESS_THAN("<"),
-        LESS_THAN_OR_EQUAL("<="),
-        GREATER_THAN(">"),
-        GREATER_THAN_OR_EQUAL(">="),
-        IS_DISTINCT_FROM("IS DISTINCT FROM");
-
-        private final String value;
-
-        Type(String value)
-        {
-            this.value = value;
-        }
-
-        public String getValue()
-        {
-            return value;
-        }
-    }
-
-    private final Type type;
+    private final ComparisonExpressionType type;
     private final Expression left;
     private final Expression right;
 
-    public ComparisonExpression(Type type, Expression left, Expression right)
+    public ComparisonExpression(ComparisonExpressionType type, Expression left, Expression right)
     {
         this(Optional.empty(), type, left, right);
     }
 
-    public ComparisonExpression(NodeLocation location, Type type, Expression left, Expression right)
+    public ComparisonExpression(NodeLocation location, ComparisonExpressionType type, Expression left, Expression right)
     {
         this(Optional.of(location), type, left, right);
     }
 
-    private ComparisonExpression(Optional<NodeLocation> location, Type type, Expression left, Expression right)
+    private ComparisonExpression(Optional<NodeLocation> location, ComparisonExpressionType type, Expression left, Expression right)
     {
         super(location);
         requireNonNull(type, "type is null");
@@ -70,7 +47,7 @@ public class ComparisonExpression
         this.right = right;
     }
 
-    public Type getType()
+    public ComparisonExpressionType getType()
     {
         return type;
     }

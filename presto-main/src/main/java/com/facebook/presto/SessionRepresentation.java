@@ -13,10 +13,12 @@
  */
 package com.facebook.presto;
 
-import com.facebook.presto.execution.QueryId;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.SessionPropertyManager;
+import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.spi.security.Identity;
 import com.facebook.presto.spi.type.TimeZoneKey;
+import com.facebook.presto.transaction.TransactionId;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.ImmutableMap;
@@ -31,6 +33,8 @@ import static java.util.Objects.requireNonNull;
 public final class SessionRepresentation
 {
     private final String queryId;
+    private final Optional<TransactionId> transactionId;
+    private final boolean clientTransactionSupport;
     private final String user;
     private final Optional<String> principal;
     private final Optional<String> source;
@@ -42,11 +46,14 @@ public final class SessionRepresentation
     private final Optional<String> userAgent;
     private final long startTime;
     private final Map<String, String> systemProperties;
-    private final Map<String, Map<String, String>> catalogProperties;
+    private final Map<ConnectorId, Map<String, String>> catalogProperties;
+    private final Map<String, String> preparedStatements;
 
     @JsonCreator
     public SessionRepresentation(
             @JsonProperty("queryId") String queryId,
+            @JsonProperty("transactionId") Optional<TransactionId> transactionId,
+            @JsonProperty("clientTransactionSupport") boolean clientTransactionSupport,
             @JsonProperty("user") String user,
             @JsonProperty("principal") Optional<String> principal,
             @JsonProperty("source") Optional<String> source,
@@ -58,9 +65,12 @@ public final class SessionRepresentation
             @JsonProperty("userAgent") Optional<String> userAgent,
             @JsonProperty("startTime") long startTime,
             @JsonProperty("systemProperties") Map<String, String> systemProperties,
-            @JsonProperty("catalogProperties") Map<String, Map<String, String>> catalogProperties)
+            @JsonProperty("catalogProperties") Map<ConnectorId, Map<String, String>> catalogProperties,
+            @JsonProperty("preparedStatements") Map<String, String> preparedStatements)
     {
         this.queryId = requireNonNull(queryId, "queryId is null");
+        this.transactionId = requireNonNull(transactionId, "transactionId is null");
+        this.clientTransactionSupport = clientTransactionSupport;
         this.user = requireNonNull(user, "user is null");
         this.principal = requireNonNull(principal, "principal is null");
         this.source = requireNonNull(source, "source is null");
@@ -72,9 +82,10 @@ public final class SessionRepresentation
         this.userAgent = requireNonNull(userAgent, "userAgent is null");
         this.startTime = startTime;
         this.systemProperties = ImmutableMap.copyOf(systemProperties);
+        this.preparedStatements = ImmutableMap.copyOf(preparedStatements);
 
-        ImmutableMap.Builder<String, Map<String, String>> catalogPropertiesBuilder = ImmutableMap.<String, Map<String, String>>builder();
-        for (Entry<String, Map<String, String>> entry : catalogProperties.entrySet()) {
+        ImmutableMap.Builder<ConnectorId, Map<String, String>> catalogPropertiesBuilder = ImmutableMap.builder();
+        for (Entry<ConnectorId, Map<String, String>> entry : catalogProperties.entrySet()) {
             catalogPropertiesBuilder.put(entry.getKey(), ImmutableMap.copyOf(entry.getValue()));
         }
         this.catalogProperties = catalogPropertiesBuilder.build();
@@ -84,6 +95,18 @@ public final class SessionRepresentation
     public String getQueryId()
     {
         return queryId;
+    }
+
+    @JsonProperty
+    public Optional<TransactionId> getTransactionId()
+    {
+        return transactionId;
+    }
+
+    @JsonProperty
+    public boolean isClientTransactionSupport()
+    {
+        return clientTransactionSupport;
     }
 
     @JsonProperty
@@ -153,15 +176,23 @@ public final class SessionRepresentation
     }
 
     @JsonProperty
-    public Map<String, Map<String, String>> getCatalogProperties()
+    public Map<ConnectorId, Map<String, String>> getCatalogProperties()
     {
         return catalogProperties;
+    }
+
+    @JsonProperty
+    public Map<String, String> getPreparedStatements()
+    {
+        return preparedStatements;
     }
 
     public Session toSession(SessionPropertyManager sessionPropertyManager)
     {
         return new Session(
                 new QueryId(queryId),
+                transactionId,
+                clientTransactionSupport,
                 new Identity(user, Optional.empty()),
                 source,
                 catalog,
@@ -173,6 +204,8 @@ public final class SessionRepresentation
                 startTime,
                 systemProperties,
                 catalogProperties,
-                sessionPropertyManager);
+                ImmutableMap.of(),
+                sessionPropertyManager,
+                preparedStatements);
     }
 }

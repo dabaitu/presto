@@ -13,29 +13,32 @@
  */
 package com.facebook.presto.sql.gen;
 
-import com.facebook.presto.byteCode.ByteCodeBlock;
-import com.facebook.presto.byteCode.ByteCodeNode;
-import com.facebook.presto.byteCode.ClassDefinition;
-import com.facebook.presto.byteCode.DynamicClassLoader;
-import com.facebook.presto.byteCode.FieldDefinition;
-import com.facebook.presto.byteCode.MethodDefinition;
-import com.facebook.presto.byteCode.OpCode;
-import com.facebook.presto.byteCode.Parameter;
-import com.facebook.presto.byteCode.Scope;
-import com.facebook.presto.byteCode.Variable;
-import com.facebook.presto.byteCode.control.ForLoop;
-import com.facebook.presto.byteCode.control.IfStatement;
-import com.facebook.presto.byteCode.expression.ByteCodeExpression;
-import com.facebook.presto.byteCode.instruction.LabelNode;
-import com.facebook.presto.operator.InMemoryJoinHash;
+import com.facebook.presto.bytecode.BytecodeBlock;
+import com.facebook.presto.bytecode.BytecodeNode;
+import com.facebook.presto.bytecode.ClassDefinition;
+import com.facebook.presto.bytecode.DynamicClassLoader;
+import com.facebook.presto.bytecode.FieldDefinition;
+import com.facebook.presto.bytecode.MethodDefinition;
+import com.facebook.presto.bytecode.OpCode;
+import com.facebook.presto.bytecode.Parameter;
+import com.facebook.presto.bytecode.Variable;
+import com.facebook.presto.bytecode.control.ForLoop;
+import com.facebook.presto.bytecode.control.IfStatement;
+import com.facebook.presto.bytecode.expression.BytecodeExpression;
+import com.facebook.presto.bytecode.instruction.LabelNode;
+import com.facebook.presto.operator.JoinHash;
+import com.facebook.presto.operator.JoinHashSupplier;
 import com.facebook.presto.operator.LookupSource;
+import com.facebook.presto.operator.PagesHash;
 import com.facebook.presto.operator.PagesHashStrategy;
+import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.BigintType;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
 import com.google.common.base.Throwables;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -51,31 +54,32 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Supplier;
 
-import static com.facebook.presto.byteCode.Access.FINAL;
-import static com.facebook.presto.byteCode.Access.PRIVATE;
-import static com.facebook.presto.byteCode.Access.PUBLIC;
-import static com.facebook.presto.byteCode.Access.a;
-import static com.facebook.presto.byteCode.Parameter.arg;
-import static com.facebook.presto.byteCode.ParameterizedType.type;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantFalse;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantInt;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantLong;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantNull;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantTrue;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.notEqual;
-import static com.facebook.presto.sql.gen.CompilerUtils.defineClass;
-import static com.facebook.presto.sql.gen.CompilerUtils.makeClassName;
-import static com.facebook.presto.sql.gen.SqlTypeByteCodeExpression.constantType;
+import static com.facebook.presto.bytecode.Access.FINAL;
+import static com.facebook.presto.bytecode.Access.PRIVATE;
+import static com.facebook.presto.bytecode.Access.PUBLIC;
+import static com.facebook.presto.bytecode.Access.a;
+import static com.facebook.presto.bytecode.CompilerUtils.defineClass;
+import static com.facebook.presto.bytecode.CompilerUtils.makeClassName;
+import static com.facebook.presto.bytecode.Parameter.arg;
+import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantFalse;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantInt;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantLong;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantNull;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantTrue;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.notEqual;
+import static com.facebook.presto.sql.gen.SqlTypeBytecodeExpression.constantType;
 import static java.util.Objects.requireNonNull;
 
 public class JoinCompiler
 {
-    private final LoadingCache<CacheKey, LookupSourceFactory> lookupSourceFactories = CacheBuilder.newBuilder().maximumSize(1000).build(
-            new CacheLoader<CacheKey, LookupSourceFactory>()
+    private final LoadingCache<CacheKey, LookupSourceSupplierFactory> lookupSourceFactories = CacheBuilder.newBuilder().maximumSize(1000).build(
+            new CacheLoader<CacheKey, LookupSourceSupplierFactory>()
             {
                 @Override
-                public LookupSourceFactory load(CacheKey key)
+                public LookupSourceSupplierFactory load(CacheKey key)
                         throws Exception
                 {
                     return internalCompileLookupSourceFactory(key.getTypes(), key.getJoinChannels());
@@ -83,7 +87,8 @@ public class JoinCompiler
             });
 
     private final LoadingCache<CacheKey, Class<? extends PagesHashStrategy>> hashStrategies = CacheBuilder.newBuilder().maximumSize(1000).build(
-            new CacheLoader<CacheKey, Class<? extends PagesHashStrategy>>() {
+            new CacheLoader<CacheKey, Class<? extends PagesHashStrategy>>()
+            {
                 @Override
                 public Class<? extends PagesHashStrategy> load(CacheKey key)
                         throws Exception
@@ -92,7 +97,7 @@ public class JoinCompiler
                 }
             });
 
-    public LookupSourceFactory compileLookupSourceFactory(List<? extends Type> types, List<Integer> joinChannels)
+    public LookupSourceSupplierFactory compileLookupSourceFactory(List<? extends Type> types, List<Integer> joinChannels)
     {
         try {
             return lookupSourceFactories.get(new CacheKey(types, joinChannels));
@@ -115,16 +120,18 @@ public class JoinCompiler
         }
     }
 
-    private LookupSourceFactory internalCompileLookupSourceFactory(List<Type> types, List<Integer> joinChannels)
+    private LookupSourceSupplierFactory internalCompileLookupSourceFactory(List<Type> types, List<Integer> joinChannels)
     {
         Class<? extends PagesHashStrategy> pagesHashStrategyClass = internalCompileHashStrategy(types, joinChannels);
 
-        Class<? extends LookupSource> lookupSourceClass = IsolatedClass.isolateClass(
+        Class<? extends Supplier> joinHashSupplierClass = IsolatedClass.isolateClass(
                 new DynamicClassLoader(getClass().getClassLoader()),
-                LookupSource.class,
-                InMemoryJoinHash.class);
+                Supplier.class,
+                JoinHashSupplier.class,
+                JoinHash.class,
+                PagesHash.class);
 
-        return new LookupSourceFactory(lookupSourceClass, new PagesHashStrategyFactory(pagesHashStrategyClass));
+        return new LookupSourceSupplierFactory(joinHashSupplierClass, new PagesHashStrategyFactory(pagesHashStrategyClass));
     }
 
     private Class<? extends PagesHashStrategy> internalCompileHashStrategy(List<Type> types, List<Integer> joinChannels)
@@ -159,9 +166,12 @@ public class JoinCompiler
         generateHashPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, hashChannelField);
         generateHashRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
         generateRowEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes);
-        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
+        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
+        generatePositionEqualsRowMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
         generatePositionEqualsRowWithPageMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
-        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields);
+        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, true);
+        generatePositionEqualsPositionMethod(classDefinition, callSiteBinder, joinChannelTypes, joinChannelFields, false);
+        generateIsPositionNull(classDefinition, joinChannelFields);
 
         return defineClass(classDefinition, PagesHashStrategy.class, callSiteBinder.getBindings(), getClass().getClassLoader());
     }
@@ -180,33 +190,33 @@ public class JoinCompiler
         Variable thisVariable = constructorDefinition.getThis();
         Variable blockIndex = constructorDefinition.getScope().declareVariable(int.class, "blockIndex");
 
-        ByteCodeBlock constructor = constructorDefinition
+        BytecodeBlock constructor = constructorDefinition
                 .getBody()
                 .comment("super();")
                 .append(thisVariable)
                 .invokeConstructor(Object.class);
 
         constructor.comment("this.size = 0")
-                    .append(thisVariable.setField(sizeField, constantLong(0L)));
+                .append(thisVariable.setField(sizeField, constantLong(0L)));
 
         constructor.comment("Set channel fields");
 
         for (int index = 0; index < channelFields.size(); index++) {
-            ByteCodeExpression channel = channels.invoke("get", Object.class, constantInt(index))
+            BytecodeExpression channel = channels.invoke("get", Object.class, constantInt(index))
                     .cast(type(List.class, Block.class));
 
             constructor.append(thisVariable.setField(channelFields.get(index), channel));
 
-            ByteCodeBlock loopBody = new ByteCodeBlock();
+            BytecodeBlock loopBody = new BytecodeBlock();
 
             constructor.comment("for(blockIndex = 0; blockIndex < channel.size(); blockIndex++) { size += channel.get(i).getRetainedSizeInBytes() }")
                     .append(new ForLoop()
                             .initialize(blockIndex.set(constantInt(0)))
-                            .condition(new ByteCodeBlock()
+                            .condition(new BytecodeBlock()
                                     .append(blockIndex)
                                     .append(channel.invoke("size", int.class))
                                     .invokeStatic(CompilerOperations.class, "lessThan", boolean.class, int.class, int.class))
-                            .update(new ByteCodeBlock().incrementVariable(blockIndex, (byte) 1))
+                            .update(new BytecodeBlock().incrementVariable(blockIndex, (byte) 1))
                             .body(loopBody));
 
             loopBody.append(thisVariable)
@@ -214,16 +224,16 @@ public class JoinCompiler
                     .getField(sizeField)
                     .append(
                             channel.invoke("get", Object.class, blockIndex)
-                            .cast(type(Block.class))
-                            .invoke("getRetainedSizeInBytes", int.class)
-                            .cast(long.class))
+                                    .cast(type(Block.class))
+                                    .invoke("getRetainedSizeInBytes", int.class)
+                                    .cast(long.class))
                     .longAdd()
                     .putField(sizeField);
         }
 
         constructor.comment("Set join channel fields");
         for (int index = 0; index < joinChannelFields.size(); index++) {
-            ByteCodeExpression joinChannel = channels.invoke("get", Object.class, constantInt(joinChannels.get(index)))
+            BytecodeExpression joinChannel = channels.invoke("get", Object.class, constantInt(joinChannels.get(index)))
                     .cast(type(List.class, Block.class));
 
             constructor.append(thisVariable.setField(joinChannelFields.get(index), joinChannel));
@@ -271,13 +281,13 @@ public class JoinCompiler
         MethodDefinition appendToMethod = classDefinition.declareMethod(a(PUBLIC), "appendTo", type(void.class), blockIndex, blockPosition, pageBuilder, outputChannelOffset);
 
         Variable thisVariable = appendToMethod.getThis();
-        ByteCodeBlock appendToBody = appendToMethod.getBody();
+        BytecodeBlock appendToBody = appendToMethod.getBody();
 
         for (int index = 0; index < channelFields.size(); index++) {
             Type type = types.get(index);
-            ByteCodeExpression typeExpression = constantType(callSiteBinder, type);
+            BytecodeExpression typeExpression = constantType(callSiteBinder, type);
 
-            ByteCodeExpression block = thisVariable
+            BytecodeExpression block = thisVariable
                     .getField(channelFields.get(index))
                     .invoke("get", Object.class, blockIndex)
                     .cast(Block.class);
@@ -297,6 +307,39 @@ public class JoinCompiler
         appendToBody.ret();
     }
 
+    private void generateIsPositionNull(ClassDefinition classDefinition, List<FieldDefinition> joinChannelFields)
+    {
+        Parameter blockIndex = arg("blockIndex", int.class);
+        Parameter blockPosition = arg("blockPosition", int.class);
+        MethodDefinition isPositionNullMethod = classDefinition.declareMethod(
+                a(PUBLIC),
+                "isPositionNull",
+                type(boolean.class),
+                blockIndex,
+                blockPosition);
+
+        for (FieldDefinition joinChannelField : joinChannelFields) {
+            BytecodeExpression block = isPositionNullMethod
+                    .getThis()
+                    .getField(joinChannelField)
+                    .invoke("get", Object.class, blockIndex)
+                    .cast(Block.class);
+
+            IfStatement ifStatement = new IfStatement();
+            ifStatement.condition(block.invoke(
+                    "isNull",
+                    boolean.class,
+                    blockPosition
+            ));
+            ifStatement.ifTrue(constantTrue().ret());
+            isPositionNullMethod.getBody().append(ifStatement);
+        }
+
+        isPositionNullMethod
+                .getBody()
+                .append(constantFalse().ret());
+    }
+
     private static void generateHashPositionMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, List<Type> joinChannelTypes, List<FieldDefinition> joinChannelFields, FieldDefinition hashChannelField)
     {
         Parameter blockIndex = arg("blockIndex", int.class);
@@ -304,13 +347,13 @@ public class JoinCompiler
         MethodDefinition hashPositionMethod = classDefinition.declareMethod(
                 a(PUBLIC),
                 "hashPosition",
-                type(int.class),
+                type(long.class),
                 blockIndex,
                 blockPosition);
 
         Variable thisVariable = hashPositionMethod.getThis();
-        ByteCodeExpression hashChannel = thisVariable.getField(hashChannelField);
-        ByteCodeExpression bigintType = constantType(callSiteBinder, BigintType.BIGINT);
+        BytecodeExpression hashChannel = thisVariable.getField(hashChannelField);
+        BytecodeExpression bigintType = constantType(callSiteBinder, BigintType.BIGINT);
 
         IfStatement ifStatement = new IfStatement();
         ifStatement.condition(notEqual(hashChannel, constantNull(hashChannelField.getType())));
@@ -320,7 +363,6 @@ public class JoinCompiler
                         long.class,
                         hashChannel.invoke("get", Object.class, blockIndex).cast(Block.class),
                         blockPosition)
-                        .cast(int.class)
                         .ret()
         );
 
@@ -328,13 +370,13 @@ public class JoinCompiler
                 .getBody()
                 .append(ifStatement);
 
-        Variable resultVariable = hashPositionMethod.getScope().declareVariable(int.class, "result");
-        hashPositionMethod.getBody().push(0).putVariable(resultVariable);
+        Variable resultVariable = hashPositionMethod.getScope().declareVariable(long.class, "result");
+        hashPositionMethod.getBody().push(0L).putVariable(resultVariable);
 
         for (int index = 0; index < joinChannelTypes.size(); index++) {
-            ByteCodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
+            BytecodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
 
-            ByteCodeExpression block = hashPositionMethod
+            BytecodeExpression block = hashPositionMethod
                     .getThis()
                     .getField(joinChannelFields.get(index))
                     .invoke("get", Object.class, blockIndex)
@@ -343,56 +385,55 @@ public class JoinCompiler
             hashPositionMethod
                     .getBody()
                     .getVariable(resultVariable)
-                    .push(31)
-                    .append(OpCode.IMUL)
+                    .push(31L)
+                    .append(OpCode.LMUL)
                     .append(typeHashCode(type, block, blockPosition))
-                    .append(OpCode.IADD)
+                    .append(OpCode.LADD)
                     .putVariable(resultVariable);
         }
 
         hashPositionMethod
                 .getBody()
                 .getVariable(resultVariable)
-                .retInt();
+                .retLong();
     }
 
     private static void generateHashRowMethod(ClassDefinition classDefinition, CallSiteBinder callSiteBinder, List<Type> joinChannelTypes)
     {
         Parameter position = arg("position", int.class);
-        Parameter blocks = arg("blocks", Block[].class);
-        MethodDefinition hashRowMethod = classDefinition.declareMethod(a(PUBLIC), "hashRow", type(int.class), position, blocks);
+        Parameter page = arg("blocks", Page.class);
+        MethodDefinition hashRowMethod = classDefinition.declareMethod(a(PUBLIC), "hashRow", type(long.class), position, page);
 
-        Variable resultVariable = hashRowMethod.getScope().declareVariable(int.class, "result");
-        hashRowMethod.getBody().push(0).putVariable(resultVariable);
+        Variable resultVariable = hashRowMethod.getScope().declareVariable(long.class, "result");
+        hashRowMethod.getBody().push(0L).putVariable(resultVariable);
 
         for (int index = 0; index < joinChannelTypes.size(); index++) {
-            ByteCodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
+            BytecodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
 
-            // todo is the case needed
-            ByteCodeExpression block = blocks.getElement(index).cast(Block.class);
+            BytecodeExpression block = page.invoke("getBlock", Block.class, constantInt(index));
 
             hashRowMethod
                     .getBody()
                     .getVariable(resultVariable)
-                    .push(31)
-                    .append(OpCode.IMUL)
+                    .push(31L)
+                    .append(OpCode.LMUL)
                     .append(typeHashCode(type, block, position))
-                    .append(OpCode.IADD)
+                    .append(OpCode.LADD)
                     .putVariable(resultVariable);
         }
 
         hashRowMethod
                 .getBody()
                 .getVariable(resultVariable)
-                .retInt();
+                .retLong();
     }
 
-    private static ByteCodeNode typeHashCode(ByteCodeExpression type, ByteCodeExpression blockRef, ByteCodeExpression blockPosition)
+    private static BytecodeNode typeHashCode(BytecodeExpression type, BytecodeExpression blockRef, BytecodeExpression blockPosition)
     {
         return new IfStatement()
-            .condition(blockRef.invoke("isNull", boolean.class, blockPosition))
-            .ifTrue(constantInt(0))
-            .ifFalse(type.invoke("hash", int.class, blockRef, blockPosition));
+                .condition(blockRef.invoke("isNull", boolean.class, blockPosition))
+                .ifTrue(constantLong(0L))
+                .ifFalse(type.invoke("hash", long.class, blockRef, blockPosition));
     }
 
     private static void generateRowEqualsRowMethod(
@@ -400,26 +441,25 @@ public class JoinCompiler
             CallSiteBinder callSiteBinder,
             List<Type> joinChannelTypes)
     {
+        Parameter leftPosition = arg("leftPosition", int.class);
+        Parameter leftPage = arg("leftPage", Page.class);
+        Parameter rightPosition = arg("rightPosition", int.class);
+        Parameter rightPage = arg("rightPage", Page.class);
         MethodDefinition rowEqualsRowMethod = classDefinition.declareMethod(
                 a(PUBLIC),
                 "rowEqualsRow",
                 type(boolean.class),
-                arg("leftPosition", int.class),
-                arg("leftBlocks", Block[].class),
-                arg("rightPosition", int.class),
-                arg("rightBlocks", Block[].class));
+                leftPosition,
+                leftPage,
+                rightPosition,
+                rightPage);
 
-        Scope compilerContext = rowEqualsRowMethod.getScope();
         for (int index = 0; index < joinChannelTypes.size(); index++) {
-            ByteCodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
+            BytecodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
 
-            ByteCodeExpression leftBlock = compilerContext
-                    .getVariable("leftBlocks")
-                    .getElement(index);
+            BytecodeExpression leftBlock = leftPage.invoke("getBlock", Block.class, constantInt(index));
 
-            ByteCodeExpression rightBlock = compilerContext
-                    .getVariable("rightBlocks")
-                    .getElement(index);
+            BytecodeExpression rightBlock = rightPage.invoke("getBlock", Block.class, constantInt(index));
 
             LabelNode checkNextField = new LabelNode("checkNextField");
             rowEqualsRowMethod
@@ -427,9 +467,9 @@ public class JoinCompiler
                     .append(typeEquals(
                             type,
                             leftBlock,
-                            compilerContext.getVariable("leftPosition"),
+                            leftPosition,
                             rightBlock,
-                            compilerContext.getVariable("rightPosition")))
+                            rightPosition))
                     .ifTrueGoto(checkNextField)
                     .push(false)
                     .retBoolean()
@@ -446,37 +486,45 @@ public class JoinCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             List<Type> joinChannelTypes,
-            List<FieldDefinition> joinChannelFields)
+            List<FieldDefinition> joinChannelFields,
+            boolean ignoreNulls)
     {
         Parameter leftBlockIndex = arg("leftBlockIndex", int.class);
         Parameter leftBlockPosition = arg("leftBlockPosition", int.class);
         Parameter rightPosition = arg("rightPosition", int.class);
-        Parameter rightBlocks = arg("rightBlocks", Block[].class);
+        Parameter rightPage = arg("rightPage", Page.class);
         MethodDefinition positionEqualsRowMethod = classDefinition.declareMethod(
                 a(PUBLIC),
-                "positionEqualsRow",
+                ignoreNulls ? "positionEqualsRowIgnoreNulls" : "positionEqualsRow",
                 type(boolean.class),
                 leftBlockIndex,
                 leftBlockPosition,
                 rightPosition,
-                rightBlocks);
+                rightPage);
 
         Variable thisVariable = positionEqualsRowMethod.getThis();
 
         for (int index = 0; index < joinChannelTypes.size(); index++) {
-            ByteCodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
+            BytecodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
 
-            ByteCodeExpression leftBlock = thisVariable
+            BytecodeExpression leftBlock = thisVariable
                     .getField(joinChannelFields.get(index))
                     .invoke("get", Object.class, leftBlockIndex)
                     .cast(Block.class);
 
-            ByteCodeExpression rightBlock = rightBlocks.getElement(index);
+            BytecodeExpression rightBlock = rightPage.invoke("getBlock", Block.class, constantInt(index));
+            BytecodeNode equalityCondition;
+            if (ignoreNulls) {
+                equalityCondition = typeEqualsIgnoreNulls(type, leftBlock, leftBlockPosition, rightBlock, rightPosition);
+            }
+            else {
+                equalityCondition = typeEquals(type, leftBlock, leftBlockPosition, rightBlock, rightPosition);
+            }
 
             LabelNode checkNextField = new LabelNode("checkNextField");
             positionEqualsRowMethod
                     .getBody()
-                    .append(typeEquals(type, leftBlock, leftBlockPosition, rightBlock, rightPosition))
+                    .append(equalityCondition)
                     .ifTrueGoto(checkNextField)
                     .push(false)
                     .retBoolean()
@@ -512,17 +560,17 @@ public class JoinCompiler
                 rightChannels);
 
         Variable thisVariable = positionEqualsRowMethod.getThis();
-        ByteCodeBlock body = positionEqualsRowMethod.getBody();
+        BytecodeBlock body = positionEqualsRowMethod.getBody();
 
         for (int index = 0; index < joinChannelTypes.size(); index++) {
-            ByteCodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
+            BytecodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
 
-            ByteCodeExpression leftBlock = thisVariable
+            BytecodeExpression leftBlock = thisVariable
                     .getField(joinChannelFields.get(index))
                     .invoke("get", Object.class, leftBlockIndex)
                     .cast(Block.class);
 
-            ByteCodeExpression rightBlock = page.invoke("getBlock", Block.class, rightChannels.getElement(index));
+            BytecodeExpression rightBlock = page.invoke("getBlock", Block.class, rightChannels.getElement(index));
 
             body.append(new IfStatement()
                     .condition(typeEquals(type, leftBlock, leftBlockPosition, rightBlock, rightPosition))
@@ -536,7 +584,8 @@ public class JoinCompiler
             ClassDefinition classDefinition,
             CallSiteBinder callSiteBinder,
             List<Type> joinChannelTypes,
-            List<FieldDefinition> joinChannelFields)
+            List<FieldDefinition> joinChannelFields,
+            boolean ignoreNulls)
     {
         Parameter leftBlockIndex = arg("leftBlockIndex", int.class);
         Parameter leftBlockPosition = arg("leftBlockPosition", int.class);
@@ -544,7 +593,7 @@ public class JoinCompiler
         Parameter rightBlockPosition = arg("rightBlockPosition", int.class);
         MethodDefinition positionEqualsPositionMethod = classDefinition.declareMethod(
                 a(PUBLIC),
-                "positionEqualsPosition",
+                ignoreNulls ? "positionEqualsPositionIgnoreNulls" : "positionEqualsPosition",
                 type(boolean.class),
                 leftBlockIndex,
                 leftBlockPosition,
@@ -553,22 +602,30 @@ public class JoinCompiler
 
         Variable thisVariable = positionEqualsPositionMethod.getThis();
         for (int index = 0; index < joinChannelTypes.size(); index++) {
-            ByteCodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
+            BytecodeExpression type = constantType(callSiteBinder, joinChannelTypes.get(index));
 
-            ByteCodeExpression leftBlock = thisVariable
+            BytecodeExpression leftBlock = thisVariable
                     .getField(joinChannelFields.get(index))
                     .invoke("get", Object.class, leftBlockIndex)
                     .cast(Block.class);
 
-            ByteCodeExpression rightBlock = thisVariable
+            BytecodeExpression rightBlock = thisVariable
                     .getField(joinChannelFields.get(index))
                     .invoke("get", Object.class, rightBlockIndex)
                     .cast(Block.class);
 
+            BytecodeNode equalityCondition;
+            if (ignoreNulls) {
+                equalityCondition = typeEqualsIgnoreNulls(type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+            }
+            else {
+                equalityCondition = typeEquals(type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+            }
+
             LabelNode checkNextField = new LabelNode("checkNextField");
             positionEqualsPositionMethod
                     .getBody()
-                    .append(typeEquals(type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition))
+                    .append(equalityCondition)
                     .ifTrueGoto(checkNextField)
                     .push(false)
                     .retBoolean()
@@ -581,12 +638,12 @@ public class JoinCompiler
                 .retInt();
     }
 
-    private static ByteCodeNode typeEquals(
-            ByteCodeExpression type,
-            ByteCodeExpression leftBlock,
-            ByteCodeExpression leftBlockPosition,
-            ByteCodeExpression rightBlock,
-            ByteCodeExpression rightBlockPosition)
+    private static BytecodeNode typeEquals(
+            BytecodeExpression type,
+            BytecodeExpression leftBlock,
+            BytecodeExpression leftBlockPosition,
+            BytecodeExpression rightBlock,
+            BytecodeExpression rightBlockPosition)
     {
         IfStatement ifStatement = new IfStatement();
         ifStatement.condition()
@@ -599,32 +656,47 @@ public class JoinCompiler
                 .append(rightBlock.invoke("isNull", boolean.class, rightBlockPosition))
                 .append(OpCode.IAND);
 
-        ifStatement.ifFalse().append(type.invoke("equalTo", boolean.class, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition));
+        ifStatement.ifFalse().append(typeEqualsIgnoreNulls(type, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition));
 
         return ifStatement;
     }
 
-    public static class LookupSourceFactory
+    private static BytecodeNode typeEqualsIgnoreNulls(
+            BytecodeExpression type,
+            BytecodeExpression leftBlock,
+            BytecodeExpression leftBlockPosition,
+            BytecodeExpression rightBlock,
+            BytecodeExpression rightBlockPosition)
     {
-        private final Constructor<? extends LookupSource> constructor;
+        return type.invoke("equalTo", boolean.class, leftBlock, leftBlockPosition, rightBlock, rightBlockPosition);
+    }
+
+    public static class LookupSourceSupplierFactory
+    {
+        private final Constructor<? extends Supplier> constructor;
         private final PagesHashStrategyFactory pagesHashStrategyFactory;
 
-        public LookupSourceFactory(Class<? extends LookupSource> lookupSourceClass, PagesHashStrategyFactory pagesHashStrategyFactory)
+        public LookupSourceSupplierFactory(Class<? extends Supplier> joinHashSupplierClass, PagesHashStrategyFactory pagesHashStrategyFactory)
         {
             this.pagesHashStrategyFactory = pagesHashStrategyFactory;
             try {
-                constructor = lookupSourceClass.getConstructor(LongArrayList.class, PagesHashStrategy.class);
+                constructor = joinHashSupplierClass.getConstructor(ConnectorSession.class, PagesHashStrategy.class, LongArrayList.class, List.class, Optional.class);
             }
             catch (NoSuchMethodException e) {
                 throw Throwables.propagate(e);
             }
         }
 
-        public LookupSource createLookupSource(LongArrayList addresses, List<List<Block>> channels, Optional<Integer> hashChannel)
+        public Supplier<LookupSource> createLookupSourceSupplier(
+                ConnectorSession session,
+                LongArrayList addresses,
+                List<List<Block>> channels,
+                Optional<Integer> hashChannel,
+                Optional<JoinFilterFunctionFactory> filterFunctionFactory)
         {
             PagesHashStrategy pagesHashStrategy = pagesHashStrategyFactory.createPagesHashStrategy(channels, hashChannel);
             try {
-                return constructor.newInstance(addresses, pagesHashStrategy);
+                return constructor.newInstance(session, pagesHashStrategy, addresses, channels, filterFunctionFactory);
             }
             catch (Exception e) {
                 throw Throwables.propagate(e);

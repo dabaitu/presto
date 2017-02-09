@@ -26,4 +26,9 @@ public class TestJdbcDistributedQueries
     {
         super(createJdbcQueryRunner(TpchTable.getTables()));
     }
+
+    @Override
+    public void testLargeIn()
+    {
+    }
 }

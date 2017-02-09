@@ -15,14 +15,21 @@ package com.facebook.presto.operator;
 
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.type.Type;
-import com.google.common.base.Preconditions;
+import com.facebook.presto.sql.gen.JoinFilterFunctionCompiler.JoinFilterFunctionFactory;
+import com.facebook.presto.sql.planner.Symbol;
+import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
+import io.airlift.concurrent.MoreFutures;
 
 import javax.annotation.concurrent.ThreadSafe;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Supplier;
 
+import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
@@ -34,52 +41,74 @@ public class HashBuilderOperator
             implements OperatorFactory
     {
         private final int operatorId;
-        private final SettableLookupSourceSupplier lookupSourceSupplier;
+        private final PlanNodeId planNodeId;
+        private final PartitionedLookupSourceFactory lookupSourceFactory;
         private final List<Integer> hashChannels;
-        private final Optional<Integer> hashChannel;
+        private final Optional<Integer> preComputedHashChannel;
+        private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
 
         private final int expectedPositions;
+
+        private int partitionIndex;
         private boolean closed;
 
         public HashBuilderOperatorFactory(
                 int operatorId,
+                PlanNodeId planNodeId,
                 List<Type> types,
+                Map<Symbol, Integer> layout,
                 List<Integer> hashChannels,
-                Optional<Integer> hashChannel,
-                int expectedPositions)
+                Optional<Integer> preComputedHashChannel,
+                boolean outer,
+                Optional<JoinFilterFunctionFactory> filterFunctionFactory,
+                int expectedPositions,
+                int partitionCount)
         {
             this.operatorId = operatorId;
-            this.lookupSourceSupplier = new SettableLookupSourceSupplier(requireNonNull(types, "types is null"));
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
 
-            Preconditions.checkArgument(!hashChannels.isEmpty(), "hashChannels is empty");
+            checkArgument(Integer.bitCount(partitionCount) == 1, "partitionCount must be a power of 2");
+            lookupSourceFactory = new PartitionedLookupSourceFactory(
+                    types,
+                    hashChannels,
+                    partitionCount,
+                    requireNonNull(layout, "layout is null"),
+                    outer);
+
             this.hashChannels = ImmutableList.copyOf(requireNonNull(hashChannels, "hashChannels is null"));
-            this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
+            this.preComputedHashChannel = requireNonNull(preComputedHashChannel, "preComputedHashChannel is null");
+            this.filterFunctionFactory = requireNonNull(filterFunctionFactory, "filterFunctionFactory is null");
 
             this.expectedPositions = expectedPositions;
         }
 
-        public LookupSourceSupplier getLookupSourceSupplier()
+        public LookupSourceFactory getLookupSourceFactory()
         {
-            return lookupSourceSupplier;
+            return lookupSourceFactory;
         }
 
         @Override
         public List<Type> getTypes()
         {
-            return lookupSourceSupplier.getTypes();
+            return lookupSourceFactory.getTypes();
         }
 
         @Override
         public Operator createOperator(DriverContext driverContext)
         {
             checkState(!closed, "Factory is already closed");
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, HashBuilderOperator.class.getSimpleName());
-            return new HashBuilderOperator(
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, planNodeId, HashBuilderOperator.class.getSimpleName());
+            HashBuilderOperator operator = new HashBuilderOperator(
                     operatorContext,
-                    lookupSourceSupplier,
+                    lookupSourceFactory,
+                    partitionIndex,
                     hashChannels,
-                    hashChannel,
+                    preComputedHashChannel,
+                    filterFunctionFactory,
                     expectedPositions);
+
+            partitionIndex++;
+            return operator;
         }
 
         @Override
@@ -91,35 +120,40 @@ public class HashBuilderOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new HashBuilderOperatorFactory(operatorId, lookupSourceSupplier.getTypes(), hashChannels, hashChannel, expectedPositions);
+            throw new UnsupportedOperationException("Parallel hash build can not be duplicated");
         }
     }
 
     private final OperatorContext operatorContext;
-    private final SettableLookupSourceSupplier lookupSourceSupplier;
+    private final PartitionedLookupSourceFactory lookupSourceFactory;
+    private final int partitionIndex;
+
     private final List<Integer> hashChannels;
-    private final Optional<Integer> hashChannel;
+    private final Optional<Integer> preComputedHashChannel;
+    private final Optional<JoinFilterFunctionFactory> filterFunctionFactory;
 
-    private final PagesIndex pagesIndex;
+    private final PagesIndex index;
 
-    private boolean finished;
+    private boolean finishing;
 
     public HashBuilderOperator(
             OperatorContext operatorContext,
-            SettableLookupSourceSupplier lookupSourceSupplier,
+            PartitionedLookupSourceFactory lookupSourceFactory,
+            int partitionIndex,
             List<Integer> hashChannels,
-            Optional<Integer> hashChannel,
+            Optional<Integer> preComputedHashChannel,
+            Optional<JoinFilterFunctionFactory> filterFunctionFactory,
             int expectedPositions)
     {
-        this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
+        this.operatorContext = operatorContext;
+        this.partitionIndex = partitionIndex;
+        this.filterFunctionFactory = filterFunctionFactory;
 
-        this.lookupSourceSupplier = requireNonNull(lookupSourceSupplier, "hashSupplier is null");
+        this.index = new PagesIndex(lookupSourceFactory.getTypes(), expectedPositions);
+        this.lookupSourceFactory = lookupSourceFactory;
 
-        Preconditions.checkArgument(!hashChannels.isEmpty(), "hashChannels is empty");
-        this.hashChannels = ImmutableList.copyOf(requireNonNull(hashChannels, "hashChannels is null"));
-        this.hashChannel = requireNonNull(hashChannel, "hashChannel is null");
-
-        this.pagesIndex = new PagesIndex(lookupSourceSupplier.getTypes(), expectedPositions);
+        this.hashChannels = hashChannels;
+        this.preComputedHashChannel = preComputedHashChannel;
     }
 
     @Override
@@ -131,31 +165,42 @@ public class HashBuilderOperator
     @Override
     public List<Type> getTypes()
     {
-        return lookupSourceSupplier.getTypes();
+        return lookupSourceFactory.getTypes();
     }
 
     @Override
     public void finish()
     {
-        if (finished) {
+        if (finishing) {
             return;
         }
+        finishing = true;
 
-        // After this point the SharedLookupSource will take over our memory reservation, and ours will be zero
-        lookupSourceSupplier.setLookupSource(new SharedLookupSource(pagesIndex.createLookupSource(hashChannels, hashChannel), operatorContext));
-        finished = true;
+        Supplier<LookupSource> partition = index.createLookupSourceSupplier(operatorContext.getSession(), hashChannels, preComputedHashChannel, filterFunctionFactory);
+        lookupSourceFactory.setPartitionLookupSourceSupplier(partitionIndex, partition);
+
+        operatorContext.setMemoryReservation(partition.get().getInMemorySizeInBytes());
     }
 
     @Override
     public boolean isFinished()
     {
-        return finished;
+        return finishing && lookupSourceFactory.isDestroyed().isDone();
     }
 
     @Override
     public boolean needsInput()
     {
-        return !finished;
+        return !finishing;
+    }
+
+    @Override
+    public ListenableFuture<?> isBlocked()
+    {
+        if (!finishing) {
+            return NOT_BLOCKED;
+        }
+        return MoreFutures.toListenableFuture(lookupSourceFactory.isDestroyed());
     }
 
     @Override
@@ -164,11 +209,11 @@ public class HashBuilderOperator
         requireNonNull(page, "page is null");
         checkState(!isFinished(), "Operator is already finished");
 
-        pagesIndex.addPage(page);
-        if (!operatorContext.trySetMemoryReservation(pagesIndex.getEstimatedSize().toBytes())) {
-            pagesIndex.compact();
+        index.addPage(page);
+        if (!operatorContext.trySetMemoryReservation(index.getEstimatedSize().toBytes())) {
+            index.compact();
         }
-        operatorContext.setMemoryReservation(pagesIndex.getEstimatedSize().toBytes());
+        operatorContext.setMemoryReservation(index.getEstimatedSize().toBytes());
         operatorContext.recordGeneratedOutput(page.getSizeInBytes(), page.getPositionCount());
     }
 

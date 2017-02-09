@@ -17,13 +17,33 @@ import org.skife.jdbi.v2.sqlobject.SqlUpdate;
 
 public interface SchemaDao
 {
+    @SqlUpdate("CREATE TABLE IF NOT EXISTS distributions (\n" +
+            "  distribution_id BIGINT PRIMARY KEY AUTO_INCREMENT,\n" +
+            "  distribution_name VARCHAR(255),\n" +
+            "  column_types TEXT NOT NULL,\n" +
+            "  bucket_count INT NOT NULL,\n" +
+            "  UNIQUE (distribution_name)\n" +
+            ")")
+    void createTableDistributions();
+
     @SqlUpdate("CREATE TABLE IF NOT EXISTS tables (\n" +
             "  table_id BIGINT PRIMARY KEY AUTO_INCREMENT,\n" +
             "  schema_name VARCHAR(255) NOT NULL,\n" +
             "  table_name VARCHAR(255) NOT NULL,\n" +
             "  temporal_column_id BIGINT,\n" +
             "  compaction_enabled BOOLEAN NOT NULL,\n" +
-            "  UNIQUE (schema_name, table_name)\n" +
+            "  organization_enabled BOOLEAN NOT NULL,\n" +
+            "  distribution_id BIGINT,\n" +
+            "  create_time BIGINT NOT NULL,\n" +
+            "  update_time BIGINT NOT NULL,\n" +
+            "  table_version BIGINT NOT NULL,\n" +
+            "  shard_count BIGINT NOT NULL,\n" +
+            "  row_count BIGINT NOT NULL,\n" +
+            "  compressed_size BIGINT NOT NULL,\n" +
+            "  uncompressed_size BIGINT NOT NULL,\n" +
+            "  UNIQUE (schema_name, table_name),\n" +
+            "  UNIQUE (distribution_id, table_id),\n" +
+            "  FOREIGN KEY (distribution_id) REFERENCES distributions (distribution_id)\n" +
             ")")
     void createTableTables();
 
@@ -34,10 +54,12 @@ public interface SchemaDao
             "  ordinal_position INT NOT NULL,\n" +
             "  data_type VARCHAR(255) NOT NULL,\n" +
             "  sort_ordinal_position INT,\n" +
+            "  bucket_ordinal_position INT,\n" +
             "  PRIMARY KEY (table_id, column_id),\n" +
             "  UNIQUE (table_id, column_name),\n" +
             "  UNIQUE (table_id, ordinal_position),\n" +
             "  UNIQUE (table_id, sort_ordinal_position),\n" +
+            "  UNIQUE (table_id, bucket_ordinal_position),\n" +
             "  FOREIGN KEY (table_id) REFERENCES tables (table_id)\n" +
             ")")
     void createTableColumns();
@@ -61,11 +83,14 @@ public interface SchemaDao
             "  shard_id BIGINT PRIMARY KEY AUTO_INCREMENT,\n" +
             "  shard_uuid BINARY(16) NOT NULL,\n" +
             "  table_id BIGINT NOT NULL,\n" +
+            "  bucket_number INT,\n" +
             "  create_time DATETIME NOT NULL,\n" +
             "  row_count BIGINT NOT NULL,\n" +
             "  compressed_size BIGINT NOT NULL,\n" +
             "  uncompressed_size BIGINT NOT NULL,\n" +
             "  UNIQUE (shard_uuid),\n" +
+            // include a covering index organized by table_id
+            "  UNIQUE (table_id, bucket_number, shard_id, shard_uuid, create_time, row_count, compressed_size, uncompressed_size),\n" +
             "  FOREIGN KEY (table_id) REFERENCES tables (table_id)\n" +
             ")")
     void createTableShards();
@@ -74,6 +99,7 @@ public interface SchemaDao
             "  shard_id BIGINT NOT NULL,\n" +
             "  node_id INT NOT NULL,\n" +
             "  PRIMARY KEY (shard_id, node_id),\n" +
+            "  UNIQUE (node_id, shard_id),\n" +
             "  FOREIGN KEY (shard_id) REFERENCES shards (shard_id),\n" +
             "  FOREIGN KEY (node_id) REFERENCES nodes (node_id)\n" +
             ")")
@@ -89,7 +115,8 @@ public interface SchemaDao
             "  transaction_id BIGINT PRIMARY KEY AUTO_INCREMENT,\n" +
             "  successful BOOLEAN,\n" +
             "  start_time DATETIME NOT NULL,\n" +
-            "  end_time DATETIME\n" +
+            "  end_time DATETIME,\n" +
+            "  UNIQUE (successful, start_time, transaction_id)\n" +
             ")")
     void createTableTransactions();
 
@@ -97,35 +124,36 @@ public interface SchemaDao
             "  shard_uuid BINARY(16) NOT NULL,\n" +
             "  transaction_id BIGINT NOT NULL,\n" +
             "  PRIMARY KEY (shard_uuid),\n" +
+            "  UNIQUE (transaction_id, shard_uuid),\n" +
             "  FOREIGN KEY (transaction_id) REFERENCES transactions (transaction_id)\n" +
             ")")
     void createTableCreatedShards();
 
-    @SqlUpdate("CREATE TABLE IF NOT EXISTS created_shard_nodes (\n" +
-            "  shard_uuid BINARY(16) NOT NULL,\n" +
-            "  node_id INT NOT NULL,\n" +
-            "  transaction_id BIGINT NOT NULL,\n" +
-            "  PRIMARY KEY (shard_uuid, node_id),\n" +
-            "  FOREIGN KEY (node_id) REFERENCES nodes (node_id),\n" +
-            "  FOREIGN KEY (transaction_id) REFERENCES transactions (transaction_id)\n" +
-            ")")
-    void createTableCreatedShardNodes();
-
     @SqlUpdate("CREATE TABLE IF NOT EXISTS deleted_shards (\n" +
-            "  shard_uuid BINARY(16) NOT NULL,\n" +
+            "  shard_uuid BINARY(16) PRIMARY KEY,\n" +
             "  delete_time DATETIME NOT NULL,\n" +
-            "  clean_time DATETIME,\n" +
-            "  purge_time DATETIME\n" +
+            "  UNIQUE (delete_time, shard_uuid)\n" +
             ")")
     void createTableDeletedShards();
 
-    @SqlUpdate("CREATE TABLE IF NOT EXISTS deleted_shard_nodes (\n" +
-            "  shard_uuid BINARY(16) NOT NULL,\n" +
+    @SqlUpdate("CREATE TABLE IF NOT EXISTS buckets (\n" +
+            "  distribution_id BIGINT NOT NULL,\n" +
+            "  bucket_number INT NOT NULL,\n" +
             "  node_id INT NOT NULL,\n" +
-            "  delete_time DATETIME NOT NULL,\n" +
-            "  clean_time DATETIME,\n" +
-            "  purge_time DATETIME,\n" +
+            "  PRIMARY KEY (distribution_id, bucket_number),\n" +
+            "  UNIQUE (node_id, distribution_id, bucket_number),\n" +
+            "  FOREIGN KEY (distribution_id) REFERENCES distributions (distribution_id),\n" +
             "  FOREIGN KEY (node_id) REFERENCES nodes (node_id)\n" +
             ")")
-    void createTableDeletedShardNodes();
+    void createTableBuckets();
+
+    @SqlUpdate("CREATE TABLE IF NOT EXISTS shard_organizer_jobs (\n" +
+            "  node_identifier VARCHAR(255) NOT NULL,\n" +
+            "  table_id BIGINT NOT NULL,\n" +
+            "  last_start_time BIGINT,\n" +
+            "  PRIMARY KEY (node_identifier, table_id),\n" +
+            "  UNIQUE (table_id, node_identifier),\n" +
+            "  FOREIGN KEY (table_id) REFERENCES tables (table_id)\n" +
+            ")")
+    void createTableShardOrganizerJobs();
 }

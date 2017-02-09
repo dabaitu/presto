@@ -18,14 +18,17 @@ import org.openjdk.jol.info.ClassLayout;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
-import static com.facebook.presto.spi.block.BlockValidationUtil.checkValidPositions;
+import static com.facebook.presto.spi.block.BlockUtil.checkValidPositions;
+import static com.facebook.presto.spi.block.DictionaryId.randomDictionaryId;
 import static io.airlift.slice.SizeOf.SIZE_OF_INT;
 import static io.airlift.slice.Slices.copyOf;
 import static io.airlift.slice.Slices.wrappedIntArray;
+import static java.lang.Math.min;
 import static java.util.Objects.requireNonNull;
-import static java.util.stream.Collectors.toList;
 
 public class DictionaryBlock
         implements Block
@@ -38,13 +41,24 @@ public class DictionaryBlock
     private final int retainedSizeInBytes;
     private final int sizeInBytes;
     private final int uniqueIds;
+    private final DictionaryId dictionarySourceId;
 
     public DictionaryBlock(int positionCount, Block dictionary, Slice ids)
     {
-        this(positionCount, dictionary, ids, false);
+        this(positionCount, dictionary, ids, false, randomDictionaryId());
+    }
+
+    public DictionaryBlock(int positionCount, Block dictionary, Slice ids, DictionaryId dictionaryId)
+    {
+        this(positionCount, dictionary, ids, false, dictionaryId);
     }
 
     public DictionaryBlock(int positionCount, Block dictionary, Slice ids, boolean dictionaryIsCompacted)
+    {
+        this(positionCount, dictionary, ids, dictionaryIsCompacted, randomDictionaryId());
+    }
+
+    public DictionaryBlock(int positionCount, Block dictionary, Slice ids, boolean dictionaryIsCompacted, DictionaryId dictionarySourceId)
     {
         requireNonNull(dictionary, "dictionary is null");
         requireNonNull(ids, "ids is null");
@@ -60,7 +74,7 @@ public class DictionaryBlock
         this.positionCount = positionCount;
         this.dictionary = dictionary;
         this.ids = ids;
-
+        this.dictionarySourceId = requireNonNull(dictionarySourceId, "dictionarySourceId is null");
         this.retainedSizeInBytes = INSTANCE_SIZE + dictionary.getRetainedSizeInBytes() + ids.getRetainedSize();
 
         if (dictionaryIsCompacted) {
@@ -70,13 +84,15 @@ public class DictionaryBlock
         else {
             int sizeInBytes = 0;
             int uniqueIds = 0;
-            boolean[] isReferenced = getReferencedPositions();
-            for (int position = 0; position < isReferenced.length; position++) {
-                if (isReferenced[position]) {
+            boolean[] seen = new boolean[dictionary.getPositionCount()];
+            for (int i = 0; i < positionCount; i++) {
+                int position = getIndex(ids, i);
+                if (!seen[position]) {
                     if (!dictionary.isNull(position)) {
                         sizeInBytes += dictionary.getLength(position);
                     }
                     uniqueIds++;
+                    seen[position] = true;
                 }
             }
             this.sizeInBytes = sizeInBytes + ids.length();
@@ -112,18 +128,6 @@ public class DictionaryBlock
     public long getLong(int position, int offset)
     {
         return dictionary.getLong(getIndex(position), offset);
-    }
-
-    @Override
-    public float getFloat(int position, int offset)
-    {
-        return dictionary.getFloat(getIndex(position), offset);
-    }
-
-    @Override
-    public double getDouble(int position, int offset)
-    {
-        return dictionary.getDouble(getIndex(position), offset);
     }
 
     @Override
@@ -169,7 +173,7 @@ public class DictionaryBlock
     }
 
     @Override
-    public int hash(int position, int offset, int length)
+    public long hash(int position, int offset, int length)
     {
         return dictionary.hash(getIndex(position), offset, length);
     }
@@ -215,18 +219,19 @@ public class DictionaryBlock
     {
         checkValidPositions(positions, positionCount);
 
-        List<Integer> distinctPositions = positions.stream().distinct().collect(toList());
-        List<Integer> currentDictionaryIndexes = distinctPositions.stream().map(this::getIndex).collect(toList());
-
-        List<Integer> positionsToCopy = currentDictionaryIndexes.stream().distinct().collect(toList());
-        Block dictionaryBlock = dictionary.copyPositions(positionsToCopy);
-
+        List<Integer> positionsToCopy = new ArrayList<>();
+        Map<Integer, Integer> oldIndexToNewIndex = new HashMap<>();
         int[] newIds = new int[positions.size()];
+
         for (int i = 0; i < positions.size(); i++) {
-            int oldIndex = currentDictionaryIndexes.get(distinctPositions.indexOf(positions.get(i)));
-            newIds[i] = positionsToCopy.indexOf(oldIndex);
+            int oldIndex = getIndex(positions.get(i));
+            if (!oldIndexToNewIndex.containsKey(oldIndex)) {
+                oldIndexToNewIndex.put(oldIndex, positionsToCopy.size());
+                positionsToCopy.add(oldIndex);
+            }
+            newIds[i] = oldIndexToNewIndex.get(oldIndex);
         }
-        return new DictionaryBlock(positions.size(), dictionaryBlock, wrappedIntArray(newIds));
+        return new DictionaryBlock(positions.size(), dictionary.copyPositions(positionsToCopy), wrappedIntArray(newIds));
     }
 
     @Override
@@ -256,11 +261,6 @@ public class DictionaryBlock
         return dictionary.isNull(getIndex(position));
     }
 
-    @Override
-    public void assureLoaded()
-    {
-    }
-
     public Block getDictionary()
     {
         return dictionary;
@@ -271,6 +271,16 @@ public class DictionaryBlock
         return ids;
     }
 
+    public int getId(int position)
+    {
+        return ids.getInt(position * SIZE_OF_INT);
+    }
+
+    public DictionaryId getDictionarySourceId()
+    {
+        return dictionarySourceId;
+    }
+
     public boolean isCompact()
     {
         return uniqueIds == dictionary.getPositionCount();
@@ -278,17 +288,7 @@ public class DictionaryBlock
 
     private int getIndex(int position)
     {
-        return ids.getInt(position * SIZE_OF_INT);
-    }
-
-    private boolean[] getReferencedPositions()
-    {
-        int dictionarySize = dictionary.getPositionCount();
-        boolean[] isReferenced = new boolean[dictionarySize];
-        for (int i = 0; i < this.positionCount; i++) {
-            isReferenced[getIndex(i)] = true;
-        }
-        return isReferenced;
+        return getIndex(ids, position);
     }
 
     public DictionaryBlock compact()
@@ -297,17 +297,18 @@ public class DictionaryBlock
             return this;
         }
 
+        // determine which dictionary entries are referenced and build a reindex for them
         int dictionarySize = dictionary.getPositionCount();
-        boolean[] isReferenced = getReferencedPositions();
-        List<Integer> dictionaryPositionsToCopy = new ArrayList<>(dictionarySize);
+        List<Integer> dictionaryPositionsToCopy = new ArrayList<>(min(dictionarySize, positionCount));
         int[] remapIndex = new int[dictionarySize];
         Arrays.fill(remapIndex, -1);
-        int newIndex = 0;
 
-        for (int i = 0; i < dictionarySize; i++) {
-            if (isReferenced[i]) {
-                dictionaryPositionsToCopy.add(i);
-                remapIndex[i] = newIndex;
+        int newIndex = 0;
+        for (int i = 0; i < positionCount; i++) {
+            int dictionaryIndex = getIndex(i);
+            if (remapIndex[dictionaryIndex] == -1) {
+                dictionaryPositionsToCopy.add(dictionaryIndex);
+                remapIndex[dictionaryIndex] = newIndex;
                 newIndex++;
             }
         }
@@ -317,6 +318,7 @@ public class DictionaryBlock
             return this;
         }
 
+        // compact the dictionary
         int[] newIds = new int[positionCount];
         for (int i = 0; i < positionCount; i++) {
             int newId = remapIndex[getIndex(i)];
@@ -333,5 +335,10 @@ public class DictionaryBlock
             // ignore if copy positions is not supported for the dictionary block
             return this;
         }
+    }
+
+    private static int getIndex(Slice ids, int i)
+    {
+        return ids.getInt(i * SIZE_OF_INT);
     }
 }

@@ -13,34 +13,74 @@
  */
 package com.facebook.presto.sql.analyzer;
 
+import com.google.common.collect.ImmutableList;
 import io.airlift.configuration.Config;
-import io.airlift.configuration.LegacyConfig;
+import io.airlift.configuration.ConfigDescription;
+import io.airlift.configuration.DefunctConfig;
+import io.airlift.units.DataSize;
 
+import javax.validation.constraints.Min;
+
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.List;
+
+import static com.facebook.presto.sql.analyzer.RegexLibrary.JONI;
+
+@DefunctConfig({
+        "resource-group-manager",
+        "experimental-syntax-enabled",
+        "analyzer.experimental-syntax-enabled"
+})
 public class FeaturesConfig
 {
-    private boolean experimentalSyntaxEnabled;
+    public static class ProcessingOptimization
+    {
+        public static final String DISABLED = "disabled";
+        public static final String COLUMNAR = "columnar";
+        public static final String COLUMNAR_DICTIONARY = "columnar_dictionary";
+
+        public static final List<String> AVAILABLE_OPTIONS = ImmutableList.of(DISABLED, COLUMNAR, COLUMNAR_DICTIONARY);
+    }
+
     private boolean distributedIndexJoinsEnabled;
     private boolean distributedJoinsEnabled = true;
+    private boolean colocatedJoinsEnabled;
     private boolean redistributeWrites = true;
     private boolean optimizeMetadataQueries;
     private boolean optimizeHashGeneration = true;
     private boolean optimizeSingleDistinct = true;
     private boolean pushTableWriteThroughUnion = true;
-    private boolean intermediateAggregationsEnabled = false;
-    private boolean columnarProcessing = false;
-    private boolean columnarProcessingDictionary = false;
+    private boolean legacyArrayAgg;
+    private boolean optimizeMixedDistinctAggregations;
 
-    @LegacyConfig("analyzer.experimental-syntax-enabled")
-    @Config("experimental-syntax-enabled")
-    public FeaturesConfig setExperimentalSyntaxEnabled(boolean enabled)
+    private String processingOptimization = ProcessingOptimization.DISABLED;
+    private boolean dictionaryAggregation;
+    private boolean resourceGroups;
+
+    private int re2JDfaStatesLimit = Integer.MAX_VALUE;
+    private int re2JDfaRetries = 5;
+    private RegexLibrary regexLibrary = JONI;
+    private boolean spillEnabled;
+    private DataSize operatorMemoryLimitBeforeSpill = new DataSize(4, DataSize.Unit.MEGABYTE);
+    private Path spillerSpillPath = Paths.get(System.getProperty("java.io.tmpdir"), "presto", "spills");
+    private int spillerThreads = 4;
+
+    public boolean isResourceGroupsEnabled()
     {
-        experimentalSyntaxEnabled = enabled;
+        return resourceGroups;
+    }
+
+    @Config("experimental.resource-groups-enabled")
+    public FeaturesConfig setResourceGroupsEnabled(boolean enabled)
+    {
+        resourceGroups = enabled;
         return this;
     }
 
-    public boolean isExperimentalSyntaxEnabled()
+    public boolean isDistributedIndexJoinsEnabled()
     {
-        return experimentalSyntaxEnabled;
+        return distributedIndexJoinsEnabled;
     }
 
     @Config("distributed-index-joins-enabled")
@@ -50,15 +90,40 @@ public class FeaturesConfig
         return this;
     }
 
-    public boolean isDistributedIndexJoinsEnabled()
+    public boolean isDistributedJoinsEnabled()
     {
-        return distributedIndexJoinsEnabled;
+        return distributedJoinsEnabled;
+    }
+
+    @Config("deprecated.legacy-array-agg")
+    public FeaturesConfig setLegacyArrayAgg(boolean legacyArrayAgg)
+    {
+        this.legacyArrayAgg = legacyArrayAgg;
+        return this;
+    }
+
+    public boolean isLegacyArrayAgg()
+    {
+        return legacyArrayAgg;
     }
 
     @Config("distributed-joins-enabled")
     public FeaturesConfig setDistributedJoinsEnabled(boolean distributedJoinsEnabled)
     {
         this.distributedJoinsEnabled = distributedJoinsEnabled;
+        return this;
+    }
+
+    public boolean isColocatedJoinsEnabled()
+    {
+        return colocatedJoinsEnabled;
+    }
+
+    @Config("colocated-joins-enabled")
+    @ConfigDescription("Experimental: Use a colocated join when possible")
+    public FeaturesConfig setColocatedJoinsEnabled(boolean colocatedJoinsEnabled)
+    {
+        this.colocatedJoinsEnabled = colocatedJoinsEnabled;
         return this;
     }
 
@@ -72,11 +137,6 @@ public class FeaturesConfig
     {
         this.redistributeWrites = redistributeWrites;
         return this;
-    }
-
-    public boolean isDistributedJoinsEnabled()
-    {
-        return distributedJoinsEnabled;
     }
 
     public boolean isOptimizeMetadataQueries()
@@ -127,39 +187,128 @@ public class FeaturesConfig
         return this;
     }
 
-    public boolean isIntermediateAggregationsEnabled()
+    public String getProcessingOptimization()
     {
-        return intermediateAggregationsEnabled;
+        return processingOptimization;
     }
 
-    @Config("optimizer.use-intermediate-aggregations")
-    public FeaturesConfig setIntermediateAggregationsEnabled(boolean intermediateAggregationsEnabled)
+    @Config("optimizer.processing-optimization")
+    public FeaturesConfig setProcessingOptimization(String processingOptimization)
     {
-        this.intermediateAggregationsEnabled = intermediateAggregationsEnabled;
+        if (!ProcessingOptimization.AVAILABLE_OPTIONS.contains(processingOptimization)) {
+            throw new IllegalStateException(String.format("Value %s is not valid for processingOptimization.", processingOptimization));
+        }
+        this.processingOptimization = processingOptimization;
         return this;
     }
 
-    public boolean isColumnarProcessing()
+    public boolean isDictionaryAggregation()
     {
-        return columnarProcessing;
+        return dictionaryAggregation;
     }
 
-    @Config("optimizer.columnar-processing")
-    public FeaturesConfig setColumnarProcessing(boolean columnarProcessing)
+    @Config("optimizer.dictionary-aggregation")
+    public FeaturesConfig setDictionaryAggregation(boolean dictionaryAggregation)
     {
-        this.columnarProcessing = columnarProcessing;
+        this.dictionaryAggregation = dictionaryAggregation;
         return this;
     }
 
-    public boolean isColumnarProcessingDictionary()
+    @Min(2)
+    public int getRe2JDfaStatesLimit()
     {
-        return columnarProcessingDictionary;
+        return re2JDfaStatesLimit;
     }
 
-    @Config("optimizer.columnar-processing-dictionary")
-    public FeaturesConfig setColumnarProcessingDictionary(boolean columnarProcessingDictionary)
+    @Config("re2j.dfa-states-limit")
+    public FeaturesConfig setRe2JDfaStatesLimit(int re2JDfaStatesLimit)
     {
-        this.columnarProcessingDictionary = columnarProcessingDictionary;
+        this.re2JDfaStatesLimit = re2JDfaStatesLimit;
+        return this;
+    }
+
+    @Min(0)
+    public int getRe2JDfaRetries()
+    {
+        return re2JDfaRetries;
+    }
+
+    @Config("re2j.dfa-retries")
+    public FeaturesConfig setRe2JDfaRetries(int re2JDfaRetries)
+    {
+        this.re2JDfaRetries = re2JDfaRetries;
+        return this;
+    }
+
+    public RegexLibrary getRegexLibrary()
+    {
+        return regexLibrary;
+    }
+
+    @Config("regex-library")
+    public FeaturesConfig setRegexLibrary(RegexLibrary regexLibrary)
+    {
+        this.regexLibrary = regexLibrary;
+        return this;
+    }
+
+    public boolean isSpillEnabled()
+    {
+        return spillEnabled;
+    }
+
+    @Config("experimental.spill-enabled")
+    public FeaturesConfig setSpillEnabled(boolean spillEnabled)
+    {
+        this.spillEnabled = spillEnabled;
+        return this;
+    }
+
+    public DataSize getOperatorMemoryLimitBeforeSpill()
+    {
+        return operatorMemoryLimitBeforeSpill;
+    }
+
+    @Config("experimental.operator-memory-limit-before-spill")
+    public FeaturesConfig setOperatorMemoryLimitBeforeSpill(DataSize operatorMemoryLimitBeforeSpill)
+    {
+        this.operatorMemoryLimitBeforeSpill = operatorMemoryLimitBeforeSpill;
+        return this;
+    }
+
+    public Path getSpillerSpillPath()
+    {
+        return spillerSpillPath;
+    }
+
+    @Config("experimental.spiller-spill-path")
+    public FeaturesConfig setSpillerSpillPath(String spillPath)
+    {
+        this.spillerSpillPath = Paths.get(spillPath);
+        return this;
+    }
+
+    public int getSpillerThreads()
+    {
+        return spillerThreads;
+    }
+
+    @Config("experimental.spiller-threads")
+    public FeaturesConfig setSpillerThreads(int spillerThreads)
+    {
+        this.spillerThreads = spillerThreads;
+        return this;
+    }
+
+    public boolean isOptimizeMixedDistinctAggregations()
+    {
+        return optimizeMixedDistinctAggregations;
+    }
+
+    @Config("optimizer.optimize-mixed-distinct-aggregations")
+    public FeaturesConfig setOptimizeMixedDistinctAggregations(boolean value)
+    {
+        this.optimizeMixedDistinctAggregations = value;
         return this;
     }
 }

@@ -13,8 +13,10 @@
  */
 package com.facebook.presto.split;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.ConnectorSplitSource;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.google.common.collect.Lists;
 
 import java.util.List;
@@ -25,26 +27,28 @@ import static java.util.Objects.requireNonNull;
 public class ConnectorAwareSplitSource
         implements SplitSource
 {
-    private final String connectorId;
+    private final ConnectorId connectorId;
+    private final ConnectorTransactionHandle transactionHandle;
     private final ConnectorSplitSource source;
 
-    public ConnectorAwareSplitSource(String connectorId, ConnectorSplitSource source)
+    public ConnectorAwareSplitSource(ConnectorId connectorId, ConnectorTransactionHandle transactionHandle, ConnectorSplitSource source)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
+        this.transactionHandle = requireNonNull(transactionHandle, "transactionHandle is null");
         this.source = requireNonNull(source, "source is null");
     }
 
     @Override
-    public String getDataSourceName()
+    public ConnectorId getConnectorId()
     {
-        return source.getDataSourceName();
+        return connectorId;
     }
 
     @Override
     public CompletableFuture<List<Split>> getNextBatch(int maxSize)
     {
         return source.getNextBatch(maxSize)
-                .thenApply(splits -> Lists.transform(splits, split -> new Split(connectorId, split)));
+                .thenApply(splits -> Lists.transform(splits, split -> new Split(connectorId, transactionHandle, split)));
     }
 
     @Override

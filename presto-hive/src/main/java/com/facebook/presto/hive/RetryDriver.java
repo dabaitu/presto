@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.hive;
 
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import io.airlift.log.Logger;
 import io.airlift.units.Duration;
@@ -136,19 +137,27 @@ public class RetryDriver
                 return callable.call();
             }
             catch (Exception e) {
+                log.debug("Failed on executing %s with attempt %d, Exception: %s", callableName, attempt, e.getMessage());
                 e = exceptionMapper.apply(e);
                 for (Class<? extends Exception> clazz : exceptionWhiteList) {
                     if (clazz.isInstance(e)) {
+                        log.debug("Exception is in whitelist.");
                         throw e;
                     }
                 }
                 if (attempt >= maxAttempts || Duration.nanosSince(startTime).compareTo(maxRetryTime) >= 0) {
+                    log.debug("Maximum attempts or maximum retry time reached. attempt: %d, maxAttempts: %d, duration: [%s] maxRetryTime: [%s]", attempt, maxAttempts, Duration.nanosSince(startTime).toString(), maxRetryTime.toString());
                     throw e;
                 }
-                log.debug("Failed on executing %s with attempt %d, will retry. Exception: %s", callableName, attempt, e.getMessage());
 
                 int delayInMs = (int) Math.min(minSleepTime.toMillis() * Math.pow(scaleFactor, attempt - 1), maxSleepTime.toMillis());
-                TimeUnit.MILLISECONDS.sleep(delayInMs);
+                try {
+                    TimeUnit.MILLISECONDS.sleep(delayInMs);
+                }
+                catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw Throwables.propagate(ie);
+                }
             }
         }
     }

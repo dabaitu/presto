@@ -22,18 +22,21 @@ import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
 import java.sql.SQLWarning;
 import java.sql.Statement;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 import static com.facebook.presto.jdbc.PrestoResultSet.resultsException;
+import static java.lang.Math.toIntExact;
 import static java.util.Objects.requireNonNull;
 
 public class PrestoStatement
         implements Statement
 {
-    private final AtomicInteger maxRows = new AtomicInteger();
+    private final AtomicLong maxRows = new AtomicLong();
     private final AtomicInteger queryTimeoutSeconds = new AtomicInteger();
     private final AtomicInteger fetchSize = new AtomicInteger();
     private final AtomicBoolean escapeProcessing = new AtomicBoolean(true);
@@ -41,10 +44,22 @@ public class PrestoStatement
     private final AtomicReference<PrestoConnection> connection;
     private final AtomicReference<ResultSet> currentResult = new AtomicReference<>();
     private final AtomicLong currentUpdateCount = new AtomicLong(-1);
+    private final AtomicReference<Optional<Consumer<QueryStats>>> progressCallback = new AtomicReference<>(Optional.empty());
+    private final Consumer<QueryStats> progressConsumer = value -> progressCallback.get().ifPresent(callback -> callback.accept(value));
 
     PrestoStatement(PrestoConnection connection)
     {
         this.connection = new AtomicReference<>(requireNonNull(connection, "connection is null"));
+    }
+
+    public void setProgressMonitor(Consumer<QueryStats> progressMonitor)
+    {
+        progressCallback.set(Optional.of(requireNonNull(progressMonitor, "progressMonitor is null")));
+    }
+
+    public void clearProgressMonitor()
+    {
+        progressCallback.set(Optional.empty());
     }
 
     @Override
@@ -89,12 +104,30 @@ public class PrestoStatement
     public int getMaxRows()
             throws SQLException
     {
+        long result = getLargeMaxRows();
+        if (result > Integer.MAX_VALUE) {
+            throw new SQLException("Max rows exceeds limit of 2147483647");
+        }
+        return toIntExact(result);
+    }
+
+    @Override
+    public long getLargeMaxRows()
+            throws SQLException
+    {
         checkOpen();
         return maxRows.get();
     }
 
     @Override
     public void setMaxRows(int max)
+            throws SQLException
+    {
+        setLargeMaxRows(max);
+    }
+
+    @Override
+    public void setLargeMaxRows(long max)
             throws SQLException
     {
         checkOpen();
@@ -176,7 +209,7 @@ public class PrestoStatement
                 throw resultsException(client.finalResults());
             }
 
-            resultSet = new PrestoResultSet(client);
+            resultSet = new PrestoResultSet(client, maxRows.get(), progressConsumer);
             checkSetOrResetSession(client);
 
             // check if this is a query
@@ -528,10 +561,11 @@ public class PrestoStatement
                 (direction == ResultSet.FETCH_UNKNOWN);
     }
 
-    private static void checkSetOrResetSession(StatementClient client) throws SQLException
+    private static void checkSetOrResetSession(StatementClient client)
+            throws SQLException
     {
         if (!client.getSetSessionProperties().isEmpty() || !client.getResetSessionProperties().isEmpty()) {
-            throw new SQLFeatureNotSupportedException(
+            throw new SQLFeatureNotSupportedException("" +
                     "SET/RESET SESSION is not supported via JDBC. " +
                     "Use the setSessionProperty() method on PrestoConnection.");
         }

@@ -13,26 +13,29 @@
  */
 package com.facebook.presto.operator.aggregation.state;
 
-import com.facebook.presto.byteCode.ByteCodeBlock;
-import com.facebook.presto.byteCode.ClassDefinition;
-import com.facebook.presto.byteCode.DynamicClassLoader;
-import com.facebook.presto.byteCode.FieldDefinition;
-import com.facebook.presto.byteCode.MethodDefinition;
-import com.facebook.presto.byteCode.Parameter;
-import com.facebook.presto.byteCode.Scope;
-import com.facebook.presto.byteCode.Variable;
-import com.facebook.presto.byteCode.expression.ByteCodeExpression;
+import com.facebook.presto.array.BlockBigArray;
+import com.facebook.presto.array.BooleanBigArray;
+import com.facebook.presto.array.ByteBigArray;
+import com.facebook.presto.array.DoubleBigArray;
+import com.facebook.presto.array.LongBigArray;
+import com.facebook.presto.array.SliceBigArray;
+import com.facebook.presto.bytecode.BytecodeBlock;
+import com.facebook.presto.bytecode.ClassDefinition;
+import com.facebook.presto.bytecode.DynamicClassLoader;
+import com.facebook.presto.bytecode.FieldDefinition;
+import com.facebook.presto.bytecode.MethodDefinition;
+import com.facebook.presto.bytecode.Parameter;
+import com.facebook.presto.bytecode.Scope;
+import com.facebook.presto.bytecode.Variable;
+import com.facebook.presto.bytecode.expression.BytecodeExpression;
 import com.facebook.presto.operator.aggregation.GroupedAccumulator;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AccumulatorStateFactory;
+import com.facebook.presto.spi.function.AccumulatorStateMetadata;
+import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.CallSiteBinder;
-import com.facebook.presto.util.array.BlockBigArray;
-import com.facebook.presto.util.array.BooleanBigArray;
-import com.facebook.presto.util.array.ByteBigArray;
-import com.facebook.presto.util.array.DoubleBigArray;
-import com.facebook.presto.util.array.LongBigArray;
-import com.facebook.presto.util.array.SliceBigArray;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -53,21 +56,23 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import static com.facebook.presto.byteCode.Access.FINAL;
-import static com.facebook.presto.byteCode.Access.PRIVATE;
-import static com.facebook.presto.byteCode.Access.PUBLIC;
-import static com.facebook.presto.byteCode.Access.STATIC;
-import static com.facebook.presto.byteCode.Access.a;
-import static com.facebook.presto.byteCode.Parameter.arg;
-import static com.facebook.presto.byteCode.ParameterizedType.type;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.add;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantBoolean;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantInt;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantLong;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantNumber;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.defaultValue;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.invokeStatic;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.newInstance;
+import static com.facebook.presto.bytecode.Access.FINAL;
+import static com.facebook.presto.bytecode.Access.PRIVATE;
+import static com.facebook.presto.bytecode.Access.PUBLIC;
+import static com.facebook.presto.bytecode.Access.STATIC;
+import static com.facebook.presto.bytecode.Access.a;
+import static com.facebook.presto.bytecode.CompilerUtils.defineClass;
+import static com.facebook.presto.bytecode.CompilerUtils.makeClassName;
+import static com.facebook.presto.bytecode.Parameter.arg;
+import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.add;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantBoolean;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantInt;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantLong;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantNumber;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.defaultValue;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeStatic;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.newInstance;
 import static com.facebook.presto.operator.aggregation.state.StateCompilerUtils.getBlockBuilderAppend;
 import static com.facebook.presto.operator.aggregation.state.StateCompilerUtils.getBlockGetter;
 import static com.facebook.presto.operator.aggregation.state.StateCompilerUtils.getSliceGetter;
@@ -75,10 +80,8 @@ import static com.facebook.presto.operator.aggregation.state.StateCompilerUtils.
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.BooleanType.BOOLEAN;
 import static com.facebook.presto.spi.type.DoubleType.DOUBLE;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
-import static com.facebook.presto.sql.gen.CompilerUtils.defineClass;
-import static com.facebook.presto.sql.gen.CompilerUtils.makeClassName;
-import static com.facebook.presto.sql.gen.SqlTypeByteCodeExpression.constantType;
+import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
+import static com.facebook.presto.sql.gen.SqlTypeBytecodeExpression.constantType;
 import static com.google.common.base.CaseFormat.LOWER_CAMEL;
 import static com.google.common.base.CaseFormat.UPPER_CAMEL;
 import static com.google.common.base.Preconditions.checkArgument;
@@ -154,11 +157,11 @@ public class StateCompiler
 
     private static void generateGetSerializedType(ClassDefinition definition, List<StateField> fields, CallSiteBinder callSiteBinder)
     {
-        ByteCodeBlock body = definition.declareMethod(a(PUBLIC), "getSerializedType", type(Type.class)).getBody();
+        BytecodeBlock body = definition.declareMethod(a(PUBLIC), "getSerializedType", type(Type.class)).getBody();
 
         Type type;
         if (fields.size() > 1) {
-            type = VARCHAR;
+            type = VARBINARY;
         }
         else {
             Class<?> stackType = fields.get(0).getType();
@@ -175,7 +178,7 @@ public class StateCompiler
                 type = BIGINT;
             }
             else if (stackType == Slice.class) {
-                type = VARCHAR;
+                type = VARBINARY;
             }
             else {
                 throw new IllegalArgumentException("Unsupported type: " + stackType);
@@ -211,7 +214,7 @@ public class StateCompiler
         Parameter state = arg("state", Object.class);
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "deserialize", type(void.class), block, index, state);
 
-        ByteCodeBlock deserializerBody = method.getBody();
+        BytecodeBlock deserializerBody = method.getBody();
 
         if (fields.size() == 1) {
             Method setter = getSetter(clazz, fields.get(0));
@@ -238,7 +241,7 @@ public class StateCompiler
         Parameter out = arg("out", BlockBuilder.class);
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "serialize", type(void.class), state, out);
 
-        ByteCodeBlock serializerBody = method.getBody();
+        BytecodeBlock serializerBody = method.getBody();
 
         if (fields.size() == 1) {
             Method getter = getGetter(clazz, fields.get(0));
@@ -247,7 +250,7 @@ public class StateCompiler
         }
         else {
             Variable slice = method.getScope().declareVariable(Slice.class, "slice");
-            ByteCodeExpression size = constantInt(serializedSizeOf(clazz));
+            BytecodeExpression size = constantInt(serializedSizeOf(clazz));
             serializerBody.append(slice.set(invokeStatic(Slices.class, "allocate", Slice.class, size)));
 
             for (StateField field : fields) {
@@ -451,7 +454,7 @@ public class StateCompiler
 
         // Generate getEstimatedSize
         MethodDefinition getEstimatedSize = definition.declareMethod(a(PUBLIC), "getEstimatedSize", type(long.class));
-        ByteCodeBlock body = getEstimatedSize.getBody();
+        BytecodeBlock body = getEstimatedSize.getBody();
 
         Variable size = getEstimatedSize.getScope().declareVariable(long.class, "size");
 
@@ -718,7 +721,7 @@ public class StateCompiler
             return initialValue;
         }
 
-        public ByteCodeExpression initialValueExpression()
+        public BytecodeExpression initialValueExpression()
         {
             if (initialValue == null) {
                 return defaultValue(type);

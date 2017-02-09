@@ -33,8 +33,6 @@ import static java.util.Objects.requireNonNull;
 public class CassandraColumnHandle
         implements ColumnHandle
 {
-    public static final String SAMPLE_WEIGHT_COLUMN_NAME = "presto_sample_weight";
-
     private final String connectorId;
     private final String name;
     private final int ordinalPosition;
@@ -133,7 +131,7 @@ public class CassandraColumnHandle
 
     public ColumnMetadata getColumnMetadata()
     {
-        return new ColumnMetadata(CassandraCqlUtils.cqlNameToSqlName(name), cassandraType.getNativeType(), partitionKey, null, hidden);
+        return new ColumnMetadata(CassandraCqlUtils.cqlNameToSqlName(name), cassandraType.getNativeType(), null, hidden);
     }
 
     public Type getType()

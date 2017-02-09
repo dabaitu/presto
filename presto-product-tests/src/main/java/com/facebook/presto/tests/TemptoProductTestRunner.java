@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.tests;
 
+import com.teradata.tempto.internal.configuration.TestConfigurationFactory;
 import com.teradata.tempto.runner.TemptoRunner;
 import com.teradata.tempto.runner.TemptoRunnerCommandLineParser;
 
@@ -22,14 +23,12 @@ public class TemptoProductTestRunner
     {
         TemptoRunnerCommandLineParser parser = TemptoRunnerCommandLineParser
                 .builder("presto product tests")
-                .setTestsPackage("com.facebook.presto.tests", false)
-                .setConfigFile("classpath:/tempto-configuration.yaml", false)
+                .setTestsPackage("com.facebook.presto.tests.*", false)
+                .setConfigFile(TestConfigurationFactory.DEFAULT_TEST_CONFIGURATION_LOCATION, false)
                 .setExcludedGroups("quarantine", true)
                 .build();
         TemptoRunner.runTempto(parser, args);
     }
 
-    private TemptoProductTestRunner()
-    {
-    }
+    private TemptoProductTestRunner() {}
 }

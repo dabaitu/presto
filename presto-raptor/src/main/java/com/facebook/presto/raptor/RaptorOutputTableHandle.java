@@ -22,6 +22,8 @@ import com.google.common.collect.ImmutableList;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 
 import static com.facebook.presto.raptor.util.MetadataUtil.checkSchemaName;
 import static com.facebook.presto.raptor.util.MetadataUtil.checkTableName;
@@ -36,10 +38,13 @@ public class RaptorOutputTableHandle
     private final String tableName;
     private final List<RaptorColumnHandle> columnHandles;
     private final List<Type> columnTypes;
-    private final Optional<RaptorColumnHandle> sampleWeightColumnHandle;
     private final List<RaptorColumnHandle> sortColumnHandles;
     private final List<SortOrder> sortOrders;
     private final Optional<RaptorColumnHandle> temporalColumnHandle;
+    private final OptionalLong distributionId;
+    private final OptionalInt bucketCount;
+    private final List<RaptorColumnHandle> bucketColumnHandles;
+    private final boolean organized;
 
     @JsonCreator
     public RaptorOutputTableHandle(
@@ -49,10 +54,13 @@ public class RaptorOutputTableHandle
             @JsonProperty("tableName") String tableName,
             @JsonProperty("columnHandles") List<RaptorColumnHandle> columnHandles,
             @JsonProperty("columnTypes") List<Type> columnTypes,
-            @JsonProperty("sampleWeightColumnHandle") Optional<RaptorColumnHandle> sampleWeightColumnHandle,
             @JsonProperty("sortColumnHandles") List<RaptorColumnHandle> sortColumnHandles,
             @JsonProperty("sortOrders") List<SortOrder> sortOrders,
-            @JsonProperty("temporalColumnHandle") Optional<RaptorColumnHandle> temporalColumnHandle)
+            @JsonProperty("temporalColumnHandle") Optional<RaptorColumnHandle> temporalColumnHandle,
+            @JsonProperty("distributionId") OptionalLong distributionId,
+            @JsonProperty("bucketCount") OptionalInt bucketCount,
+            @JsonProperty("organized") boolean organized,
+            @JsonProperty("bucketColumnHandles") List<RaptorColumnHandle> bucketColumnHandles)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
         this.transactionId = transactionId;
@@ -60,10 +68,13 @@ public class RaptorOutputTableHandle
         this.tableName = checkTableName(tableName);
         this.columnHandles = ImmutableList.copyOf(requireNonNull(columnHandles, "columnHandles is null"));
         this.columnTypes = ImmutableList.copyOf(requireNonNull(columnTypes, "columnTypes is null"));
-        this.sampleWeightColumnHandle = requireNonNull(sampleWeightColumnHandle, "sampleWeightColumnHandle is null");
         this.sortOrders = requireNonNull(sortOrders, "sortOrders is null");
         this.sortColumnHandles = requireNonNull(sortColumnHandles, "sortColumnHandles is null");
         this.temporalColumnHandle = requireNonNull(temporalColumnHandle, "temporalColumnHandle is null");
+        this.distributionId = requireNonNull(distributionId, "distributionId is null");
+        this.bucketCount = requireNonNull(bucketCount, "bucketCount is null");
+        this.bucketColumnHandles = ImmutableList.copyOf(requireNonNull(bucketColumnHandles, "bucketColumnHandles is null"));
+        this.organized = organized;
     }
 
     @JsonProperty
@@ -103,12 +114,6 @@ public class RaptorOutputTableHandle
     }
 
     @JsonProperty
-    public Optional<RaptorColumnHandle> getSampleWeightColumnHandle()
-    {
-        return sampleWeightColumnHandle;
-    }
-
-    @JsonProperty
     public List<RaptorColumnHandle> getSortColumnHandles()
     {
         return sortColumnHandles;
@@ -124,6 +129,30 @@ public class RaptorOutputTableHandle
     public Optional<RaptorColumnHandle> getTemporalColumnHandle()
     {
         return temporalColumnHandle;
+    }
+
+    @JsonProperty
+    public OptionalLong getDistributionId()
+    {
+        return distributionId;
+    }
+
+    @JsonProperty
+    public OptionalInt getBucketCount()
+    {
+        return bucketCount;
+    }
+
+    @JsonProperty
+    public List<RaptorColumnHandle> getBucketColumnHandles()
+    {
+        return bucketColumnHandles;
+    }
+
+    @JsonProperty
+    public boolean isOrganized()
+    {
+        return organized;
     }
 
     @Override

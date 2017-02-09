@@ -17,6 +17,8 @@ function StatementClient(connectionData, headerCallback, dataCallback, errorCall
     this.currentResults = null;
     this.valid = true;
 
+    this.isHttps = window.location.protocol === "https:"
+
     if (!(connectionData.sessionParameters === undefined)) {
         var parameterMap = JSON.parse(connectionData.sessionParameters);
         for (var name in parameterMap) {
@@ -28,10 +30,16 @@ function StatementClient(connectionData, headerCallback, dataCallback, errorCall
     this.headers = {
         "X-Presto-User": this.user ? this.user : 'N/A',
         "X-Presto-Source": this.source,
-        "X-Presto-Catalog": this.catalog,
-        "X-Presto-Schema": this.schema,
         "X-Presto-Session": this.sessionParameters
     };
+
+    if (!(this.catalog === undefined)) {
+        this.headers["X-Presto-Catalog"] = this.catalog
+    }
+
+    if (!(this.schema === undefined)) {
+        this.headers["X-Presto-Schema"] = this.schema
+    }
 
     // lastRecordNumber starts with 0 according to Tableau web connector docs
     this.submitQuery(0);
@@ -66,7 +74,7 @@ StatementClient.prototype.advance = function(lastRecordNumber) {
     var statementClient = this;
     $.ajax({
         type: "GET",
-        url: this.currentResults.nextUri,
+        url: this.isHttps ? this.currentResults.nextUri.replace(/^http:/, 'https:') : this.currentResults.nextUri,
         headers: this.headers,
         dataType: 'json',
         // FIXME having problems when async: true

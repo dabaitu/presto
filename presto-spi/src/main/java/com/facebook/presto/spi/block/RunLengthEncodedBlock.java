@@ -20,7 +20,7 @@ import org.openjdk.jol.info.ClassLayout;
 
 import java.util.List;
 
-import static com.facebook.presto.spi.block.BlockValidationUtil.checkValidPositions;
+import static com.facebook.presto.spi.block.BlockUtil.checkValidPositions;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
@@ -139,18 +139,6 @@ public class RunLengthEncodedBlock
     }
 
     @Override
-    public float getFloat(int position, int offset)
-    {
-        return value.getFloat(0, offset);
-    }
-
-    @Override
-    public double getDouble(int position, int offset)
-    {
-        return value.getDouble(0, offset);
-    }
-
-    @Override
     public Slice getSlice(int position, int offset, int length)
     {
         return value.getSlice(0, offset, length);
@@ -193,7 +181,7 @@ public class RunLengthEncodedBlock
     }
 
     @Override
-    public int hash(int position, int offset, int length)
+    public long hash(int position, int offset, int length)
     {
         return value.hash(0, offset, length);
     }
@@ -243,7 +231,7 @@ public class RunLengthEncodedBlock
 
     private void checkReadablePosition(int position)
     {
-        if (position < 0  || position >= positionCount) {
+        if (position < 0 || position >= positionCount) {
             throw new IllegalArgumentException("position is not valid");
         }
     }

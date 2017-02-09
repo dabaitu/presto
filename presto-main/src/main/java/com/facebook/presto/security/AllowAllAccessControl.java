@@ -14,7 +14,10 @@
 package com.facebook.presto.security;
 
 import com.facebook.presto.metadata.QualifiedObjectName;
+import com.facebook.presto.spi.CatalogSchemaName;
 import com.facebook.presto.spi.security.Identity;
+import com.facebook.presto.spi.security.Privilege;
+import com.facebook.presto.transaction.TransactionId;
 
 import java.security.Principal;
 
@@ -27,67 +30,92 @@ public class AllowAllAccessControl
     }
 
     @Override
-    public void checkCanCreateTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanCreateSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName)
     {
     }
 
     @Override
-    public void checkCanDropTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanDropSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName)
     {
     }
 
     @Override
-    public void checkCanRenameTable(Identity identity, QualifiedObjectName tableName, QualifiedObjectName newTableName)
+    public void checkCanRenameSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName, String newSchemaName)
     {
     }
 
     @Override
-    public void checkCanAddColumns(Identity identity, QualifiedObjectName tableName)
+    public void checkCanCreateTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanRenameColumn(Identity identity, QualifiedObjectName tableName)
+    public void checkCanDropTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanSelectFromTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanRenameTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName, QualifiedObjectName newTableName)
     {
     }
 
     @Override
-    public void checkCanInsertIntoTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanAddColumns(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanDeleteFromTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanRenameColumn(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanCreateView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanDropView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanInsertIntoTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanSelectFromView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanDeleteFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
     }
 
     @Override
-    public void checkCanCreateViewWithSelectFromTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanCreateView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
     {
     }
 
     @Override
-    public void checkCanCreateViewWithSelectFromView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanDropView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
+    {
+    }
+
+    @Override
+    public void checkCanSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
+    {
+    }
+
+    @Override
+    public void checkCanCreateViewWithSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
+    {
+    }
+
+    @Override
+    public void checkCanCreateViewWithSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
+    {
+    }
+
+    @Override
+    public void checkCanGrantTablePrivilege(TransactionId transactionId, Identity identity, Privilege privilege, QualifiedObjectName tableName)
+    {
+    }
+
+    @Override
+    public void checkCanRevokeTablePrivilege(TransactionId transactionId, Identity identity, Privilege privilege, QualifiedObjectName tableName)
     {
     }
 
@@ -97,7 +125,7 @@ public class AllowAllAccessControl
     }
 
     @Override
-    public void checkCanSetCatalogSessionProperty(Identity identity, String catalogName, String propertyName)
+    public void checkCanSetCatalogSessionProperty(TransactionId transactionId, Identity identity, String catalogName, String propertyName)
     {
     }
 }

@@ -15,11 +15,12 @@ package com.facebook.presto.redis;
 
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.ConnectorSplit;
-import com.facebook.presto.spi.ConnectorSplitManager;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.facebook.presto.spi.FixedSplitSource;
 import com.facebook.presto.spi.HostAddress;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import redis.clients.jedis.Jedis;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import static com.facebook.presto.redis.RedisHandleResolver.convertLayout;
 import static com.google.common.base.Preconditions.checkState;
 import static java.util.Objects.requireNonNull;
 
@@ -41,7 +43,6 @@ public class RedisSplitManager
 {
     private final String connectorId;
     private final RedisConnectorConfig redisConnectorConfig;
-    private final RedisHandleResolver handleResolver;
     private final RedisJedisManager jedisManager;
 
     private static final long REDIS_MAX_SPLITS = 100;
@@ -51,19 +52,17 @@ public class RedisSplitManager
     public RedisSplitManager(
             RedisConnectorId connectorId,
             RedisConnectorConfig redisConnectorConfig,
-            RedisHandleResolver handleResolver,
             RedisJedisManager jedisManager)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null").toString();
         this.redisConnectorConfig = requireNonNull(redisConnectorConfig, "redisConfig is null");
-        this.handleResolver = requireNonNull(handleResolver, "handleResolver is null");
         this.jedisManager = requireNonNull(jedisManager, "jedisManager is null");
     }
 
     @Override
-    public ConnectorSplitSource getSplits(ConnectorSession session, ConnectorTableLayoutHandle layout)
+    public ConnectorSplitSource getSplits(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorTableLayoutHandle layout)
     {
-        RedisTableHandle redisTableHandle = handleResolver.convertLayout(layout).getTable();
+        RedisTableHandle redisTableHandle = convertLayout(layout).getTable();
 
         List<HostAddress> nodes = new ArrayList<>(redisConnectorConfig.getNodes());
         Collections.shuffle(nodes);
@@ -107,6 +106,6 @@ public class RedisSplitManager
 
             builder.add(split);
         }
-        return new FixedSplitSource(connectorId, builder.build());
+        return new FixedSplitSource(builder.build());
     }
 }

@@ -13,14 +13,17 @@
  */
 package com.facebook.presto.redis;
 
-import com.facebook.presto.spi.Connector;
-import com.facebook.presto.spi.ConnectorHandleResolver;
-import com.facebook.presto.spi.ConnectorMetadata;
-import com.facebook.presto.spi.ConnectorRecordSetProvider;
-import com.facebook.presto.spi.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.Connector;
+import com.facebook.presto.spi.connector.ConnectorMetadata;
+import com.facebook.presto.spi.connector.ConnectorRecordSetProvider;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.facebook.presto.spi.transaction.IsolationLevel;
 
 import javax.inject.Inject;
 
+import static com.facebook.presto.spi.transaction.IsolationLevel.READ_COMMITTED;
+import static com.facebook.presto.spi.transaction.IsolationLevel.checkConnectorSupports;
 import static java.util.Objects.requireNonNull;
 
 /**
@@ -33,29 +36,27 @@ public class RedisConnector
 
     private final RedisSplitManager splitManager;
     private final RedisRecordSetProvider recordSetProvider;
-    private final RedisHandleResolver handleResolver;
 
     @Inject
     public RedisConnector(
-            RedisHandleResolver handleResolver,
             RedisMetadata metadata,
             RedisSplitManager splitManager,
             RedisRecordSetProvider recordSetProvider)
     {
-        this.handleResolver = requireNonNull(handleResolver, "handleResolver is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
         this.splitManager = requireNonNull(splitManager, "splitManager is null");
         this.recordSetProvider = requireNonNull(recordSetProvider, "recordSetProvider is null");
     }
 
     @Override
-    public ConnectorHandleResolver getHandleResolver()
+    public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly)
     {
-        return handleResolver;
+        checkConnectorSupports(READ_COMMITTED, isolationLevel);
+        return RedisTransactionHandle.INSTANCE;
     }
 
     @Override
-    public ConnectorMetadata getMetadata()
+    public ConnectorMetadata getMetadata(ConnectorTransactionHandle transaction)
     {
         return metadata;
     }

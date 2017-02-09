@@ -15,6 +15,7 @@ package com.facebook.presto.operator.index;
 
 import com.facebook.presto.ScheduledSplit;
 import com.facebook.presto.TaskSource;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.operator.Driver;
 import com.facebook.presto.operator.DriverFactory;
@@ -24,6 +25,7 @@ import com.facebook.presto.operator.TaskContext;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.base.Throwables;
@@ -55,6 +57,7 @@ import static java.util.Objects.requireNonNull;
 @ThreadSafe
 public class IndexLoader
 {
+    private static final ConnectorId INDEX_CONNECTOR_ID = new ConnectorId("$index");
     private final BlockingQueue<UpdateRequest> updateRequests = new LinkedBlockingQueue<>();
 
     private final List<Type> outputTypes;
@@ -235,8 +238,9 @@ public class IndexLoader
         Driver driver = driverFactory.createDriver(pipelineContext.addDriverContext());
 
         PageRecordSet pageRecordSet = new PageRecordSet(keyTypes, indexKeyTuple);
-        PlanNodeId planNodeId = Iterables.getOnlyElement(driverFactory.getSourceIds());
-        driver.updateSource(new TaskSource(planNodeId, ImmutableSet.of(new ScheduledSplit(0, new Split("index", new IndexSplit(pageRecordSet)))), true));
+        PlanNodeId planNodeId = driverFactory.getSourceId().get();
+        ScheduledSplit split = new ScheduledSplit(0, planNodeId, new Split(INDEX_CONNECTOR_ID, new ConnectorTransactionHandle() {}, new IndexSplit(pageRecordSet)));
+        driver.updateSource(new TaskSource(planNodeId, ImmutableSet.of(split), true));
 
         return new StreamingIndexedData(outputTypes, keyTypes, indexKeyTuple, pageBuffer, driver);
     }
@@ -315,12 +319,13 @@ public class IndexLoader
         public boolean load(List<UpdateRequest> requests)
         {
             // Generate a RecordSet that only presents index keys that have not been cached and are deduped based on lookupSourceInputChannels
-            UnloadedIndexKeyRecordSet recordSetForLookupSource = new UnloadedIndexKeyRecordSet(indexSnapshotReference.get(), lookupSourceInputChannels, indexTypes, requests);
+            UnloadedIndexKeyRecordSet recordSetForLookupSource = new UnloadedIndexKeyRecordSet(pipelineContext.getSession(), indexSnapshotReference.get(), lookupSourceInputChannels, indexTypes, requests);
 
             // Drive index lookup to produce the output (landing in indexSnapshotBuilder)
             try (Driver driver = driverFactory.createDriver(pipelineContext.addDriverContext())) {
-                PlanNodeId sourcePlanNodeId = Iterables.getOnlyElement(driverFactory.getSourceIds());
-                driver.updateSource(new TaskSource(sourcePlanNodeId, ImmutableSet.of(new ScheduledSplit(0, new Split("index", new IndexSplit(recordSetForLookupSource)))), true));
+                PlanNodeId sourcePlanNodeId = driverFactory.getSourceId().get();
+                ScheduledSplit split = new ScheduledSplit(0, sourcePlanNodeId, new Split(INDEX_CONNECTOR_ID, new ConnectorTransactionHandle() {}, new IndexSplit(recordSetForLookupSource)));
+                driver.updateSource(new TaskSource(sourcePlanNodeId, ImmutableSet.of(split), true));
                 while (!driver.isFinished()) {
                     ListenableFuture<?> process = driver.process();
                     checkState(process.isDone(), "Driver should never block");
@@ -335,7 +340,7 @@ public class IndexLoader
             // Generate a RecordSet that presents unique index keys that have not been cached
             UnloadedIndexKeyRecordSet indexKeysRecordSet = (lookupSourceInputChannels.equals(allInputChannels))
                     ? recordSetForLookupSource
-                    : new UnloadedIndexKeyRecordSet(indexSnapshotReference.get(), allInputChannels, indexTypes, requests);
+                    : new UnloadedIndexKeyRecordSet(pipelineContext.getSession(), indexSnapshotReference.get(), allInputChannels, indexTypes, requests);
 
             // Create lookup source with new data
             IndexSnapshot newValue = indexSnapshotBuilder.createIndexSnapshot(indexKeysRecordSet);
@@ -387,19 +392,19 @@ public class IndexLoader
         }
 
         @Override
-        public long getJoinPosition(int position, Page page, int rawHash)
+        public long getJoinPosition(int position, Page page, Page allChannelsPage, long rawHash)
         {
             return IndexSnapshot.UNLOADED_INDEX_KEY;
         }
 
         @Override
-        public long getJoinPosition(int position, Page page)
+        public long getJoinPosition(int position, Page hashChannelsPage, Page allChannelsPage)
         {
             return IndexSnapshot.UNLOADED_INDEX_KEY;
         }
 
         @Override
-        public long getNextJoinPosition(long currentPosition)
+        public long getNextJoinPosition(long currentJoinPosition, int probePosition, Page allProbeChannelsPage)
         {
             return IndexSnapshot.UNLOADED_INDEX_KEY;
         }
@@ -408,11 +413,6 @@ public class IndexLoader
         public void appendTo(long position, PageBuilder pageBuilder, int outputChannelOffset)
         {
             throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void close()
-        {
         }
     }
 }

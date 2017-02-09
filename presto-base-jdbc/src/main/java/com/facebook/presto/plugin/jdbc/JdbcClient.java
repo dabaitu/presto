@@ -16,14 +16,12 @@ package com.facebook.presto.plugin.jdbc;
 import com.facebook.presto.spi.ConnectorSplitSource;
 import com.facebook.presto.spi.ConnectorTableMetadata;
 import com.facebook.presto.spi.SchemaTableName;
-import io.airlift.slice.Slice;
 
 import javax.annotation.Nullable;
 
 import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -43,19 +41,26 @@ public interface JdbcClient
     Connection getConnection(JdbcSplit split)
             throws SQLException;
 
-    String buildSql(JdbcSplit split, List<JdbcColumnHandle> columnHandles);
+    PreparedStatement buildSql(JdbcSplit split, List<JdbcColumnHandle> columnHandles)
+            throws SQLException;
 
     JdbcOutputTableHandle beginCreateTable(ConnectorTableMetadata tableMetadata);
 
-    void commitCreateTable(JdbcOutputTableHandle handle, Collection<Slice> fragments);
+    void commitCreateTable(JdbcOutputTableHandle handle);
+
+    JdbcOutputTableHandle beginInsertTable(ConnectorTableMetadata tableMetadata);
+
+    void finishInsertTable(JdbcOutputTableHandle handle);
 
     void dropTable(JdbcTableHandle jdbcTableHandle);
+
+    void rollbackCreateTable(JdbcOutputTableHandle handle);
 
     String buildInsertSql(JdbcOutputTableHandle handle);
 
     Connection getConnection(JdbcOutputTableHandle handle)
             throws SQLException;
 
-    Statement getStatement(Connection connection)
+    PreparedStatement getPreparedStatement(Connection connection, String sql)
             throws SQLException;
 }

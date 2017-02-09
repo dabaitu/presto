@@ -21,14 +21,16 @@ import javax.inject.Inject;
 
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.UUID;
 
-import static com.facebook.presto.raptor.RaptorErrorCode.RAPTOR_ERROR;
+import static com.facebook.presto.raptor.RaptorErrorCode.RAPTOR_BACKUP_ERROR;
+import static com.facebook.presto.raptor.RaptorErrorCode.RAPTOR_BACKUP_NOT_FOUND;
 import static com.facebook.presto.raptor.storage.FileStorageService.getFileSystemPath;
-import static java.util.Locale.ENGLISH;
+import static java.nio.file.Files.deleteIfExists;
 import static java.util.Objects.requireNonNull;
 
 public class FileBackupStore
@@ -56,14 +58,20 @@ public class FileBackupStore
     @Override
     public void backupShard(UUID uuid, File source)
     {
-        File backupFile = getFileSystemPath(baseDir, uuid);
-        createDirectories(backupFile.getParentFile());
+        File backupFile = getBackupFile(uuid);
 
         try {
-            copyFile(source, backupFile);
+            try {
+                // Optimistically assume the file can be created
+                copyFile(source, backupFile);
+            }
+            catch (FileNotFoundException e) {
+                createDirectories(backupFile.getParentFile());
+                copyFile(source, backupFile);
+            }
         }
         catch (IOException e) {
-            throw new PrestoException(RAPTOR_ERROR, "Failed to create backup shard file", e);
+            throw new PrestoException(RAPTOR_BACKUP_ERROR, "Failed to create backup shard file", e);
         }
     }
 
@@ -73,16 +81,23 @@ public class FileBackupStore
         try {
             copyFile(getBackupFile(uuid), target);
         }
+        catch (FileNotFoundException e) {
+            throw new PrestoException(RAPTOR_BACKUP_NOT_FOUND, "Backup shard not found: " + uuid, e);
+        }
         catch (IOException e) {
-            throw new PrestoException(RAPTOR_ERROR, "Failed to copy backup shard: " + uuid, e);
+            throw new PrestoException(RAPTOR_BACKUP_ERROR, "Failed to copy backup shard: " + uuid, e);
         }
     }
 
-    @SuppressWarnings("ResultOfMethodCallIgnored")
     @Override
-    public void deleteShard(UUID uuid)
+    public boolean deleteShard(UUID uuid)
     {
-        getBackupFile(uuid).delete();
+        try {
+            return deleteIfExists(getBackupFile(uuid).toPath());
+        }
+        catch (IOException e) {
+            throw new PrestoException(RAPTOR_BACKUP_ERROR, "Failed to delete backup shard: " + uuid, e);
+        }
     }
 
     @Override
@@ -94,29 +109,13 @@ public class FileBackupStore
     @VisibleForTesting
     public File getBackupFile(UUID uuid)
     {
-        File file = getFileSystemPath(baseDir, uuid);
-        File legacy = getLegacyFileSystemPath(baseDir, uuid);
-        if (!file.exists() && legacy.exists()) {
-            return legacy;
-        }
-        return file;
-    }
-
-    // TODO: remove this after old data is migrated
-    private static File getLegacyFileSystemPath(File base, UUID shardUuid)
-    {
-        String uuid = shardUuid.toString().toLowerCase(ENGLISH);
-        return base.toPath()
-                .resolve(uuid.substring(0, 3))
-                .resolve(uuid.substring(3, 6))
-                .resolve(uuid + ".orc")
-                .toFile();
+        return getFileSystemPath(baseDir, uuid);
     }
 
     private static void createDirectories(File dir)
     {
         if (!dir.mkdirs() && !dir.isDirectory()) {
-            throw new PrestoException(RAPTOR_ERROR, "Failed creating directories: " + dir);
+            throw new PrestoException(RAPTOR_BACKUP_ERROR, "Failed creating directories: " + dir);
         }
     }
 

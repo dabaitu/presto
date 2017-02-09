@@ -19,15 +19,20 @@ import com.facebook.presto.metadata.QualifiedObjectName;
 import com.facebook.presto.metadata.TableHandle;
 import com.facebook.presto.security.AccessControl;
 import com.facebook.presto.sql.analyzer.SemanticException;
+import com.facebook.presto.sql.tree.Expression;
 import com.facebook.presto.sql.tree.RenameTable;
+import com.facebook.presto.transaction.TransactionManager;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static com.facebook.presto.metadata.MetadataUtil.createQualifiedObjectName;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_CATALOG;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.MISSING_TABLE;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.NOT_SUPPORTED;
 import static com.facebook.presto.sql.analyzer.SemanticErrorCode.TABLE_ALREADY_EXISTS;
+import static java.util.concurrent.CompletableFuture.completedFuture;
 
 public class RenameTableTask
         implements DataDefinitionTask<RenameTable>
@@ -39,8 +44,9 @@ public class RenameTableTask
     }
 
     @Override
-    public void execute(RenameTable statement, Session session, Metadata metadata, AccessControl accessControl, QueryStateMachine stateMachine)
+    public CompletableFuture<?> execute(RenameTable statement, TransactionManager transactionManager, Metadata metadata, AccessControl accessControl, QueryStateMachine stateMachine, List<Expression> parameters)
     {
+        Session session = stateMachine.getSession();
         QualifiedObjectName tableName = createQualifiedObjectName(session, statement, statement.getSource());
         Optional<TableHandle> tableHandle = metadata.getTableHandle(session, tableName);
         if (!tableHandle.isPresent()) {
@@ -48,7 +54,7 @@ public class RenameTableTask
         }
 
         QualifiedObjectName target = createQualifiedObjectName(session, statement, statement.getTarget());
-        if (!metadata.getCatalogNames().containsKey(target.getCatalogName())) {
+        if (!metadata.getCatalogHandle(session, target.getCatalogName()).isPresent()) {
             throw new SemanticException(MISSING_CATALOG, statement, "Target catalog '%s' does not exist", target.getCatalogName());
         }
         if (metadata.getTableHandle(session, target).isPresent()) {
@@ -57,8 +63,10 @@ public class RenameTableTask
         if (!tableName.getCatalogName().equals(target.getCatalogName())) {
             throw new SemanticException(NOT_SUPPORTED, statement, "Table rename across catalogs is not supported");
         }
-        accessControl.checkCanRenameTable(session.getIdentity(), tableName, target);
+        accessControl.checkCanRenameTable(session.getRequiredTransactionId(), session.getIdentity(), tableName, target);
 
         metadata.renameTable(session, tableHandle.get(), target);
+
+        return completedFuture(null);
     }
 }

@@ -13,12 +13,14 @@
  */
 package com.facebook.presto.operator.scalar;
 
-import com.facebook.presto.byteCode.ByteCodeBlock;
-import com.facebook.presto.byteCode.ClassDefinition;
-import com.facebook.presto.byteCode.MethodDefinition;
-import com.facebook.presto.byteCode.Parameter;
-import com.facebook.presto.byteCode.Scope;
-import com.facebook.presto.byteCode.Variable;
+import com.facebook.presto.bytecode.BytecodeBlock;
+import com.facebook.presto.bytecode.ClassDefinition;
+import com.facebook.presto.bytecode.CompilerUtils;
+import com.facebook.presto.bytecode.MethodDefinition;
+import com.facebook.presto.bytecode.Parameter;
+import com.facebook.presto.bytecode.Scope;
+import com.facebook.presto.bytecode.Variable;
+import com.facebook.presto.metadata.BoundVariables;
 import com.facebook.presto.metadata.FunctionRegistry;
 import com.facebook.presto.metadata.Signature;
 import com.facebook.presto.metadata.SqlOperator;
@@ -27,27 +29,26 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.spi.type.TypeManager;
 import com.facebook.presto.sql.gen.ArrayGeneratorUtils;
-import com.facebook.presto.sql.gen.ArrayMapByteCodeExpression;
+import com.facebook.presto.sql.gen.ArrayMapBytecodeExpression;
 import com.facebook.presto.sql.gen.CachedInstanceBinder;
 import com.facebook.presto.sql.gen.CallSiteBinder;
-import com.facebook.presto.sql.gen.CompilerUtils;
 import com.google.common.base.Joiner;
 import com.google.common.collect.ImmutableList;
 
 import java.lang.invoke.MethodHandle;
-import java.util.Map;
 
-import static com.facebook.presto.byteCode.Access.FINAL;
-import static com.facebook.presto.byteCode.Access.PUBLIC;
-import static com.facebook.presto.byteCode.Access.STATIC;
-import static com.facebook.presto.byteCode.Access.a;
-import static com.facebook.presto.byteCode.Parameter.arg;
-import static com.facebook.presto.byteCode.ParameterizedType.type;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantBoolean;
-import static com.facebook.presto.metadata.OperatorType.CAST;
+import static com.facebook.presto.bytecode.Access.FINAL;
+import static com.facebook.presto.bytecode.Access.PUBLIC;
+import static com.facebook.presto.bytecode.Access.STATIC;
+import static com.facebook.presto.bytecode.Access.a;
+import static com.facebook.presto.bytecode.CompilerUtils.defineClass;
+import static com.facebook.presto.bytecode.Parameter.arg;
+import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantBoolean;
 import static com.facebook.presto.metadata.Signature.internalOperator;
-import static com.facebook.presto.metadata.Signature.typeParameter;
-import static com.facebook.presto.sql.gen.CompilerUtils.defineClass;
+import static com.facebook.presto.metadata.Signature.typeVariable;
+import static com.facebook.presto.spi.function.OperatorType.CAST;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
 import static com.facebook.presto.util.Reflection.methodHandle;
 import static com.google.common.base.Preconditions.checkArgument;
 
@@ -58,15 +59,19 @@ public class ArrayToArrayCast
 
     private ArrayToArrayCast()
     {
-        super(CAST, ImmutableList.of(typeParameter("F"), typeParameter("T")), "array<T>", ImmutableList.of("array<F>"));
+        super(CAST,
+                ImmutableList.of(typeVariable("F"), typeVariable("T")),
+                ImmutableList.of(),
+                parseTypeSignature("array(T)"),
+                ImmutableList.of(parseTypeSignature("array(F)")));
     }
 
     @Override
-    public ScalarFunctionImplementation specialize(Map<String, Type> types, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
+    public ScalarFunctionImplementation specialize(BoundVariables boundVariables, int arity, TypeManager typeManager, FunctionRegistry functionRegistry)
     {
         checkArgument(arity == 1, "Expected arity to be 1");
-        Type fromType = types.get("F");
-        Type toType = types.get("T");
+        Type fromType = boundVariables.getTypeVariable("F");
+        Type toType = boundVariables.getTypeVariable("T");
 
         Signature signature = internalOperator(CAST.name(), toType.getTypeSignature(), ImmutableList.of(fromType.getTypeSignature()));
         ScalarFunctionImplementation function = functionRegistry.getScalarFunctionImplementation(signature);
@@ -95,7 +100,7 @@ public class ArrayToArrayCast
                 value);
 
         Scope scope = method.getScope();
-        ByteCodeBlock body = method.getBody();
+        BytecodeBlock body = method.getBody();
 
         Variable wasNull = scope.declareVariable(boolean.class, "wasNull");
         body.append(wasNull.set(constantBoolean(false)));
@@ -104,13 +109,13 @@ public class ArrayToArrayCast
         Type fromElementType = typeManager.getType(elementCastSignature.getArgumentTypes().get(0));
         Type toElementType = typeManager.getType(elementCastSignature.getReturnType());
         CachedInstanceBinder cachedInstanceBinder = new CachedInstanceBinder(definition, binder);
-        ArrayMapByteCodeExpression newArray = ArrayGeneratorUtils.map(scope, cachedInstanceBinder, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
+        ArrayMapBytecodeExpression newArray = ArrayGeneratorUtils.map(scope, cachedInstanceBinder, fromElementType, toElementType, value, elementCastSignature.getName(), elementCast);
 
         // return the block
         body.append(newArray.ret());
 
         MethodDefinition constructorDefinition = definition.declareConstructor(a(PUBLIC));
-        ByteCodeBlock constructorBody = constructorDefinition.getBody();
+        BytecodeBlock constructorBody = constructorDefinition.getBody();
         Variable thisVariable = constructorDefinition.getThis();
         constructorBody.comment("super();")
                 .append(thisVariable)

@@ -24,6 +24,8 @@ import com.facebook.presto.spi.PageBuilder;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.block.BlockBuilderStatus;
+import com.facebook.presto.spi.function.ScalarFunction;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.BooleanType;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.ExpressionCompiler;
@@ -32,7 +34,6 @@ import com.facebook.presto.sql.relational.ConstantExpression;
 import com.facebook.presto.sql.relational.InputReferenceExpression;
 import com.facebook.presto.sql.relational.RowExpression;
 import com.facebook.presto.type.ArrayType;
-import com.facebook.presto.type.SqlType;
 import com.google.common.base.Verify;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slices;
@@ -110,7 +111,7 @@ public class BenchmarkArrayDistinct
         public void setup()
         {
             MetadataManager metadata = MetadataManager.createTestMetadataManager();
-            metadata.addFunctions(new FunctionListBuilder(metadata.getTypeManager()).scalar(BenchmarkArrayDistinct.class).getFunctions());
+            metadata.addFunctions(new FunctionListBuilder().scalar(BenchmarkArrayDistinct.class).getFunctions());
             ExpressionCompiler compiler = new ExpressionCompiler(metadata);
             ImmutableList.Builder<RowExpression> projectionsBuilder = ImmutableList.builder();
             Block[] blocks = new Block[TYPES.size()];
@@ -123,7 +124,7 @@ public class BenchmarkArrayDistinct
             }
 
             ImmutableList<RowExpression> projections = projectionsBuilder.build();
-            pageProcessor = compiler.compilePageProcessor(new ConstantExpression(true, BooleanType.BOOLEAN), projections);
+            pageProcessor = compiler.compilePageProcessor(new ConstantExpression(true, BooleanType.BOOLEAN), projections).get();
             pageBuilder = new PageBuilder(projections.stream().map(RowExpression::getType).collect(Collectors.toList()));
             page = new Page(blocks);
         }
@@ -181,8 +182,8 @@ public class BenchmarkArrayDistinct
     }
 
     @ScalarFunction
-    @SqlType("array<varchar>")
-    public static Block oldArrayDistinct(@SqlType("array<varchar>") Block array)
+    @SqlType("array(varchar)")
+    public static Block oldArrayDistinct(@SqlType("array(varchar)") Block array)
     {
         if (array.getPositionCount() == 0) {
             return array;

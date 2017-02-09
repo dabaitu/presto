@@ -19,16 +19,16 @@ import com.facebook.presto.raptor.storage.StorageManagerConfig;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorPageSink;
-import com.facebook.presto.spi.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.ConnectorSession;
 import com.facebook.presto.spi.PageSorter;
+import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import io.airlift.json.JsonCodec;
 import io.airlift.units.DataSize;
 
 import javax.inject.Inject;
 
 import java.util.List;
-import java.util.Optional;
 
 import static com.facebook.presto.raptor.util.Types.checkType;
 import static java.util.Objects.requireNonNull;
@@ -52,7 +52,7 @@ public class RaptorPageSinkProvider
     }
 
     @Override
-    public ConnectorPageSink createPageSink(ConnectorSession session, ConnectorOutputTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle tableHandle)
     {
         RaptorOutputTableHandle handle = checkType(tableHandle, RaptorOutputTableHandle.class, "tableHandle");
         return new RaptorPageSink(
@@ -62,14 +62,16 @@ public class RaptorPageSinkProvider
                 handle.getTransactionId(),
                 toColumnIds(handle.getColumnHandles()),
                 handle.getColumnTypes(),
-                handle.getSampleWeightColumnHandle().map(RaptorColumnHandle::getColumnId),
                 toColumnIds(handle.getSortColumnHandles()),
                 handle.getSortOrders(),
+                handle.getBucketCount(),
+                toColumnIds(handle.getBucketColumnHandles()),
+                handle.getTemporalColumnHandle(),
                 maxBufferSize);
     }
 
     @Override
-    public ConnectorPageSink createPageSink(ConnectorSession session, ConnectorInsertTableHandle tableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle tableHandle)
     {
         RaptorInsertTableHandle handle = checkType(tableHandle, RaptorInsertTableHandle.class, "tableHandle");
         return new RaptorPageSink(
@@ -79,9 +81,11 @@ public class RaptorPageSinkProvider
                 handle.getTransactionId(),
                 toColumnIds(handle.getColumnHandles()),
                 handle.getColumnTypes(),
-                Optional.empty(),
                 toColumnIds(handle.getSortColumnHandles()),
                 handle.getSortOrders(),
+                handle.getBucketCount(),
+                toColumnIds(handle.getBucketColumnHandles()),
+                handle.getTemporalColumnHandle(),
                 maxBufferSize);
     }
 

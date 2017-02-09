@@ -72,9 +72,44 @@ public abstract class AstVisitor<R, C>
         return visitLiteral(node, context);
     }
 
+    protected R visitDecimalLiteral(DecimalLiteral node, C context)
+    {
+        return visitLiteral(node, context);
+    }
+
     protected R visitStatement(Statement node, C context)
     {
         return visitNode(node, context);
+    }
+
+    protected R visitDataDefinitionStatement(DataDefinitionStatement node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitPrepare(Prepare node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitDeallocate(Deallocate node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitExecute(Execute node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitDescribeOutput(DescribeOutput node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitDescribeInput(DescribeInput node, C context)
+    {
+        return visitStatement(node, context);
     }
 
     protected R visitQuery(Query node, C context)
@@ -112,6 +147,11 @@ public abstract class AstVisitor<R, C>
         return visitStatement(node, context);
     }
 
+    protected R visitShowCreate(ShowCreate node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
     protected R visitShowFunctions(ShowFunctions node, C context)
     {
         return visitStatement(node, context);
@@ -129,12 +169,12 @@ public abstract class AstVisitor<R, C>
 
     protected R visitSetSession(SetSession node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     public R visitResetSession(ResetSession node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitGenericLiteral(GenericLiteral node, C context)
@@ -153,11 +193,6 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitWith(With node, C context)
-    {
-        return visitNode(node, context);
-    }
-
-    protected R visitApproximate(Approximate node, C context)
     {
         return visitNode(node, context);
     }
@@ -243,6 +278,11 @@ public abstract class AstVisitor<R, C>
     }
 
     protected R visitStringLiteral(StringLiteral node, C context)
+    {
+        return visitLiteral(node, context);
+    }
+
+    protected R visitCharLiteral(CharLiteral node, C context)
     {
         return visitLiteral(node, context);
     }
@@ -347,6 +387,11 @@ public abstract class AstVisitor<R, C>
         return visitLiteral(node, context);
     }
 
+    protected R visitParameter(Parameter node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
     protected R visitLogicalBinaryExpression(LogicalBinaryExpression node, C context)
     {
         return visitExpression(node, context);
@@ -407,12 +452,17 @@ public abstract class AstVisitor<R, C>
         return visitExpression(node, context);
     }
 
+    protected R visitTryExpression(TryExpression node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
     protected R visitCast(Cast node, C context)
     {
         return visitExpression(node, context);
     }
 
-    protected R visitInputReference(InputReference node, C context)
+    protected R visitFieldReference(FieldReference node, C context)
     {
         return visitExpression(node, context);
     }
@@ -432,14 +482,44 @@ public abstract class AstVisitor<R, C>
         return visitNode(node, context);
     }
 
+    protected R visitCallArgument(CallArgument node, C context)
+    {
+        return visitNode(node, context);
+    }
+
     protected R visitTableElement(TableElement node, C context)
     {
         return visitNode(node, context);
     }
 
-    protected R visitCreateTable(CreateTable node, C context)
+    protected R visitColumnDefinition(ColumnDefinition node, C context)
+    {
+        return visitTableElement(node, context);
+    }
+
+    protected R visitLikeClause(LikeClause node, C context)
+    {
+        return visitTableElement(node, context);
+    }
+
+    protected R visitCreateSchema(CreateSchema node, C context)
     {
         return visitStatement(node, context);
+    }
+
+    protected R visitDropSchema(DropSchema node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitRenameSchema(RenameSchema node, C context)
+    {
+        return visitStatement(node, context);
+    }
+
+    protected R visitCreateTable(CreateTable node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitCreateTableAsSelect(CreateTableAsSelect node, C context)
@@ -449,41 +529,131 @@ public abstract class AstVisitor<R, C>
 
     protected R visitDropTable(DropTable node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitRenameTable(RenameTable node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitRenameColumn(RenameColumn node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitAddColumn(AddColumn node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitCreateView(CreateView node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitDropView(DropView node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitInsert(Insert node, C context)
     {
-        return visitNode(node, context);
+        return visitStatement(node, context);
+    }
+
+    protected R visitCall(Call node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
     }
 
     protected R visitDelete(Delete node, C context)
     {
-        return visitStatement(node, context);
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitStartTransaction(StartTransaction node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitGrant(Grant node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitRevoke(Revoke node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitTransactionMode(TransactionMode node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitIsolationLevel(Isolation node, C context)
+    {
+        return visitTransactionMode(node, context);
+    }
+
+    protected R visitTransactionAccessMode(TransactionAccessMode node, C context)
+    {
+        return visitTransactionMode(node, context);
+    }
+
+    protected R visitCommit(Commit node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitRollback(Rollback node, C context)
+    {
+        return visitDataDefinitionStatement(node, context);
+    }
+
+    protected R visitAtTimeZone(AtTimeZone node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
+    protected R visitGroupBy(GroupBy node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitGroupingElement(GroupingElement node, C context)
+    {
+        return visitNode(node, context);
+    }
+
+    protected R visitCube(Cube node, C context)
+    {
+        return visitGroupingElement(node, context);
+    }
+
+    protected R visitGroupingSets(GroupingSets node, C context)
+    {
+        return visitGroupingElement(node, context);
+    }
+
+    protected R visitRollup(Rollup node, C context)
+    {
+        return visitGroupingElement(node, context);
+    }
+
+    protected R visitSimpleGroupBy(SimpleGroupBy node, C context)
+    {
+        return visitGroupingElement(node, context);
+    }
+
+    protected R visitSymbolReference(SymbolReference node, C context)
+    {
+        return visitExpression(node, context);
+    }
+
+    protected R visitQuantifiedComparisonExpression(QuantifiedComparisonExpression node, C context)
+    {
+        return visitExpression(node, context);
     }
 }

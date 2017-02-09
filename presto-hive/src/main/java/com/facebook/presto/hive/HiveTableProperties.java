@@ -13,29 +13,34 @@
  */
 package com.facebook.presto.hive;
 
+import com.facebook.presto.spi.PrestoException;
 import com.facebook.presto.spi.session.PropertyMetadata;
 import com.facebook.presto.spi.type.TypeManager;
 import com.google.common.collect.ImmutableList;
 
 import javax.inject.Inject;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
+import static com.facebook.presto.spi.StandardErrorCode.INVALID_TABLE_PROPERTY;
 import static com.facebook.presto.spi.session.PropertyMetadata.integerSessionProperty;
-import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
-import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
-import static com.google.common.base.Preconditions.checkState;
+import static com.facebook.presto.spi.session.PropertyMetadata.stringSessionProperty;
+import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
 
 public class HiveTableProperties
 {
+    public static final String EXTERNAL_LOCATION_PROPERTY = "external_location";
     public static final String STORAGE_FORMAT_PROPERTY = "format";
     public static final String PARTITIONED_BY_PROPERTY = "partitioned_by";
-    public static final String RETENTION_PROPERTY = "retention_days";
-    private static final int DEFAULT_RETENTION_DAYS = 0;
+    public static final String BUCKETED_BY_PROPERTY = "bucketed_by";
+    public static final String BUCKET_COUNT_PROPERTY = "bucket_count";
 
     private final List<PropertyMetadata<?>> tableProperties;
 
@@ -43,25 +48,43 @@ public class HiveTableProperties
     public HiveTableProperties(TypeManager typeManager, HiveClientConfig config)
     {
         tableProperties = ImmutableList.of(
+                stringSessionProperty(
+                        EXTERNAL_LOCATION_PROPERTY,
+                        "File system location URI for external table",
+                        null,
+                        false),
                 new PropertyMetadata<>(
                         STORAGE_FORMAT_PROPERTY,
                         "Hive storage format for the table",
-                        VARCHAR,
+                        createUnboundedVarcharType(),
                         HiveStorageFormat.class,
                         config.getHiveStorageFormat(),
                         false,
-                        value -> HiveStorageFormat.valueOf(((String) value).toUpperCase(ENGLISH))),
+                        value -> HiveStorageFormat.valueOf(((String) value).toUpperCase(ENGLISH)),
+                        HiveStorageFormat::toString),
                 new PropertyMetadata<>(
                         PARTITIONED_BY_PROPERTY,
                         "Partition columns",
-                        typeManager.getParameterizedType(ARRAY, ImmutableList.of(VARCHAR.getTypeSignature()), ImmutableList.of()),
+                        typeManager.getType(parseTypeSignature("array(varchar)")),
                         List.class,
                         ImmutableList.of(),
                         false,
-                        value -> ImmutableList.copyOf(((List<String>) value).stream()
-                                .map(name -> name.toLowerCase(ENGLISH))
-                                .collect(Collectors.toList()))),
-                integerSessionProperty(RETENTION_PROPERTY, "Table retention days", DEFAULT_RETENTION_DAYS, false));
+                        value -> ImmutableList.copyOf(((Collection<?>) value).stream()
+                                .map(name -> ((String) name).toLowerCase(ENGLISH))
+                                .collect(Collectors.toList())),
+                        value -> value),
+                new PropertyMetadata<>(
+                        BUCKETED_BY_PROPERTY,
+                        "Bucketing columns",
+                        typeManager.getType(parseTypeSignature("array(varchar)")),
+                        List.class,
+                        ImmutableList.of(),
+                        false,
+                        value -> ImmutableList.copyOf(((Collection<?>) value).stream()
+                                .map(name -> ((String) name).toLowerCase(ENGLISH))
+                                .collect(Collectors.toList())),
+                        value -> value),
+                integerSessionProperty(BUCKET_COUNT_PROPERTY, "Number of buckets", 0, false));
     }
 
     public List<PropertyMetadata<?>> getTableProperties()
@@ -69,25 +92,41 @@ public class HiveTableProperties
         return tableProperties;
     }
 
+    public static String getExternalLocation(Map<String, Object> tableProperties)
+    {
+        return (String) tableProperties.get(EXTERNAL_LOCATION_PROPERTY);
+    }
+
     public static HiveStorageFormat getHiveStorageFormat(Map<String, Object> tableProperties)
     {
         return (HiveStorageFormat) tableProperties.get(STORAGE_FORMAT_PROPERTY);
     }
 
+    @SuppressWarnings("unchecked")
     public static List<String> getPartitionedBy(Map<String, Object> tableProperties)
     {
         return (List<String>) tableProperties.get(PARTITIONED_BY_PROPERTY);
     }
 
-    public static OptionalInt getRetentionDays(Map<String, Object> tableProperties)
+    public static Optional<HiveBucketProperty> getBucketProperty(Map<String, Object> tableProperties)
     {
-        if (tableProperties.containsKey(RETENTION_PROPERTY)) {
-            int retentionDays = (Integer) tableProperties.get(RETENTION_PROPERTY);
-            if (retentionDays != DEFAULT_RETENTION_DAYS) {
-                checkState(retentionDays > 0, "%s must be greater than zero", RETENTION_PROPERTY);
-                return OptionalInt.of(retentionDays);
-            }
+        List<String> bucketedBy = getBucketedBy(tableProperties);
+        int bucketCount = (Integer) tableProperties.get(BUCKET_COUNT_PROPERTY);
+        if ((bucketedBy.isEmpty()) && (bucketCount == 0)) {
+            return Optional.empty();
         }
-        return OptionalInt.empty();
+        if (bucketCount < 0) {
+            throw new PrestoException(INVALID_TABLE_PROPERTY, format("%s must be greater than zero", BUCKET_COUNT_PROPERTY));
+        }
+        if (bucketedBy.isEmpty() || bucketCount == 0) {
+            throw new PrestoException(INVALID_TABLE_PROPERTY, format("%s and %s must be specified together", BUCKETED_BY_PROPERTY, BUCKET_COUNT_PROPERTY));
+        }
+        return Optional.of(new HiveBucketProperty(bucketedBy, bucketCount));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> getBucketedBy(Map<String, Object> tableProperties)
+    {
+        return (List<String>) tableProperties.get(BUCKETED_BY_PROPERTY);
     }
 }

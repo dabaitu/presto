@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.operator;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.metadata.Split;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.UpdatablePageSource;
@@ -34,6 +35,8 @@ import static java.util.Objects.requireNonNull;
 public class ExchangeOperator
         implements SourceOperator, Closeable
 {
+    public static final ConnectorId REMOTE_CONNECTOR_ID = new ConnectorId("$remote");
+
     public static class ExchangeOperatorFactory
             implements SourceOperatorFactory
     {
@@ -68,7 +71,7 @@ public class ExchangeOperator
         {
             checkState(!closed, "Factory is already closed");
 
-            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, ExchangeOperator.class.getSimpleName());
+            OperatorContext operatorContext = driverContext.addOperatorContext(operatorId, sourceId, ExchangeOperator.class.getSimpleName());
             return new ExchangeOperator(
                     operatorContext,
                     types,
@@ -112,7 +115,7 @@ public class ExchangeOperator
     public Supplier<Optional<UpdatablePageSource>> addSplit(Split split)
     {
         requireNonNull(split, "split is null");
-        checkArgument(split.getConnectorId().equals("remote"), "split is not a remote split");
+        checkArgument(split.getConnectorId().equals(REMOTE_CONNECTOR_ID), "split is not a remote split");
 
         URI location = ((RemoteSplit) split.getConnectorSplit()).getLocation();
         exchangeClient.addLocation(location);
@@ -147,7 +150,7 @@ public class ExchangeOperator
     @Override
     public boolean isFinished()
     {
-        return exchangeClient.isClosed();
+        return exchangeClient.isFinished();
     }
 
     @Override

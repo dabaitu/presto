@@ -15,9 +15,13 @@ package com.facebook.presto.testing;
 
 import com.facebook.presto.metadata.QualifiedObjectName;
 import com.facebook.presto.security.AccessControlManager;
+import com.facebook.presto.spi.CatalogSchemaName;
 import com.facebook.presto.spi.security.Identity;
-import com.google.common.base.MoreObjects;
+import com.facebook.presto.transaction.TransactionId;
+import com.facebook.presto.transaction.TransactionManager;
 import com.google.common.collect.ImmutableMap;
+
+import javax.inject.Inject;
 
 import java.security.Principal;
 import java.util.Collections;
@@ -27,13 +31,16 @@ import java.util.Optional;
 import java.util.Set;
 
 import static com.facebook.presto.spi.security.AccessDeniedException.denyAddColumn;
+import static com.facebook.presto.spi.security.AccessDeniedException.denyCreateSchema;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyCreateTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyCreateView;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyDeleteTable;
+import static com.facebook.presto.spi.security.AccessDeniedException.denyDropSchema;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyDropTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyDropView;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyInsertTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameColumn;
+import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameSchema;
 import static com.facebook.presto.spi.security.AccessDeniedException.denyRenameTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySelectTable;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySelectView;
@@ -41,20 +48,24 @@ import static com.facebook.presto.spi.security.AccessDeniedException.denySetCata
 import static com.facebook.presto.spi.security.AccessDeniedException.denySetSystemSessionProperty;
 import static com.facebook.presto.spi.security.AccessDeniedException.denySetUser;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.ADD_COLUMN;
+import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.CREATE_SCHEMA;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.CREATE_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.CREATE_VIEW;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.CREATE_VIEW_WITH_SELECT_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.CREATE_VIEW_WITH_SELECT_VIEW;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.DELETE_TABLE;
+import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.DROP_SCHEMA;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.DROP_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.DROP_VIEW;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.INSERT_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.RENAME_COLUMN;
+import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.RENAME_SCHEMA;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.RENAME_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SELECT_TABLE;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SELECT_VIEW;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SET_SESSION;
 import static com.facebook.presto.testing.TestingAccessControlManager.TestingPrivilegeType.SET_USER;
+import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
 
 public class TestingAccessControlManager
@@ -62,8 +73,10 @@ public class TestingAccessControlManager
 {
     private final Set<TestingPrivilege> denyPrivileges = new HashSet<>();
 
-    public TestingAccessControlManager()
+    @Inject
+    public TestingAccessControlManager(TransactionManager transactionManager)
     {
+        super(transactionManager);
         setSystemAccessControl(ALLOW_ALL_ACCESS_CONTROL, ImmutableMap.of());
     }
 
@@ -99,119 +112,152 @@ public class TestingAccessControlManager
     }
 
     @Override
-    public void checkCanCreateTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanCreateSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName)
+    {
+        if (shouldDenyPrivilege(identity.getUser(), schemaName.getSchemaName(), CREATE_SCHEMA)) {
+            denyCreateSchema(schemaName.toString());
+        }
+        if (denyPrivileges.isEmpty()) {
+            super.checkCanCreateSchema(transactionId, identity, schemaName);
+        }
+    }
+
+    @Override
+    public void checkCanDropSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName)
+    {
+        if (shouldDenyPrivilege(identity.getUser(), schemaName.getSchemaName(), DROP_SCHEMA)) {
+            denyDropSchema(schemaName.toString());
+        }
+        if (denyPrivileges.isEmpty()) {
+            super.checkCanDropSchema(transactionId, identity, schemaName);
+        }
+    }
+
+    @Override
+    public void checkCanRenameSchema(TransactionId transactionId, Identity identity, CatalogSchemaName schemaName, String newSchemaName)
+    {
+        if (shouldDenyPrivilege(identity.getUser(), schemaName.getSchemaName(), RENAME_SCHEMA)) {
+            denyRenameSchema(schemaName.toString(), newSchemaName);
+        }
+        if (denyPrivileges.isEmpty()) {
+            super.checkCanRenameSchema(transactionId, identity, schemaName, newSchemaName);
+        }
+    }
+
+    @Override
+    public void checkCanCreateTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), CREATE_TABLE)) {
             denyCreateTable(tableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanCreateTable(identity, tableName);
+            super.checkCanCreateTable(transactionId, identity, tableName);
         }
     }
 
     @Override
-    public void checkCanDropTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanDropTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), DROP_TABLE)) {
             denyDropTable(tableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanDropTable(identity, tableName);
+            super.checkCanDropTable(transactionId, identity, tableName);
         }
     }
 
     @Override
-    public void checkCanRenameTable(Identity identity, QualifiedObjectName tableName, QualifiedObjectName newTableName)
+    public void checkCanRenameTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName, QualifiedObjectName newTableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), RENAME_TABLE)) {
             denyRenameTable(tableName.toString(), newTableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanRenameTable(identity, tableName, newTableName);
+            super.checkCanRenameTable(transactionId, identity, tableName, newTableName);
         }
     }
 
     @Override
-    public void checkCanAddColumns(Identity identity, QualifiedObjectName tableName)
+    public void checkCanAddColumns(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), ADD_COLUMN)) {
             denyAddColumn(tableName.toString());
         }
-        super.checkCanAddColumns(identity, tableName);
+        super.checkCanAddColumns(transactionId, identity, tableName);
     }
 
     @Override
-    public void checkCanRenameColumn(Identity identity, QualifiedObjectName tableName)
+    public void checkCanRenameColumn(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), RENAME_COLUMN)) {
             denyRenameColumn(tableName.toString());
         }
-        super.checkCanRenameColumn(identity, tableName);
+        super.checkCanRenameColumn(transactionId, identity, tableName);
     }
 
     @Override
-    public void checkCanSelectFromTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), SELECT_TABLE)) {
             denySelectTable(tableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanSelectFromTable(identity, tableName);
+            super.checkCanSelectFromTable(transactionId, identity, tableName);
         }
     }
 
     @Override
-    public void checkCanInsertIntoTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanInsertIntoTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), INSERT_TABLE)) {
             denyInsertTable(tableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanInsertIntoTable(identity, tableName);
+            super.checkCanInsertIntoTable(transactionId, identity, tableName);
         }
     }
 
     @Override
-    public void checkCanDeleteFromTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanDeleteFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), DELETE_TABLE)) {
             denyDeleteTable(tableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanDeleteFromTable(identity, tableName);
+            super.checkCanDeleteFromTable(transactionId, identity, tableName);
         }
     }
 
     @Override
-    public void checkCanCreateView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanCreateView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
     {
         if (shouldDenyPrivilege(identity.getUser(), viewName.getObjectName(), CREATE_VIEW)) {
             denyCreateView(viewName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanCreateView(identity, viewName);
+            super.checkCanCreateView(transactionId, identity, viewName);
         }
     }
 
     @Override
-    public void checkCanDropView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanDropView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
     {
         if (shouldDenyPrivilege(identity.getUser(), viewName.getObjectName(), DROP_VIEW)) {
             denyDropView(viewName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanDropView(identity, viewName);
+            super.checkCanDropView(transactionId, identity, viewName);
         }
     }
 
     @Override
-    public void checkCanSelectFromView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
     {
         if (shouldDenyPrivilege(identity.getUser(), viewName.getObjectName(), SELECT_VIEW)) {
             denySelectView(viewName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanSelectFromView(identity, viewName);
+            super.checkCanSelectFromView(transactionId, identity, viewName);
         }
     }
 
@@ -227,35 +273,35 @@ public class TestingAccessControlManager
     }
 
     @Override
-    public void checkCanCreateViewWithSelectFromTable(Identity identity, QualifiedObjectName tableName)
+    public void checkCanCreateViewWithSelectFromTable(TransactionId transactionId, Identity identity, QualifiedObjectName tableName)
     {
         if (shouldDenyPrivilege(identity.getUser(), tableName.getObjectName(), CREATE_VIEW_WITH_SELECT_TABLE)) {
             denySelectTable(tableName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanCreateViewWithSelectFromTable(identity, tableName);
+            super.checkCanCreateViewWithSelectFromTable(transactionId, identity, tableName);
         }
     }
 
     @Override
-    public void checkCanCreateViewWithSelectFromView(Identity identity, QualifiedObjectName viewName)
+    public void checkCanCreateViewWithSelectFromView(TransactionId transactionId, Identity identity, QualifiedObjectName viewName)
     {
         if (shouldDenyPrivilege(identity.getUser(), viewName.getObjectName(), CREATE_VIEW_WITH_SELECT_VIEW)) {
             denySelectView(viewName.toString());
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanCreateViewWithSelectFromView(identity, viewName);
+            super.checkCanCreateViewWithSelectFromView(transactionId, identity, viewName);
         }
     }
 
     @Override
-    public void checkCanSetCatalogSessionProperty(Identity identity, String catalogName, String propertyName)
+    public void checkCanSetCatalogSessionProperty(TransactionId transactionId, Identity identity, String catalogName, String propertyName)
     {
         if (shouldDenyPrivilege(identity.getUser(), catalogName + "." + propertyName, SET_SESSION)) {
             denySetCatalogSessionProperty(catalogName, propertyName);
         }
         if (denyPrivileges.isEmpty()) {
-            super.checkCanSetCatalogSessionProperty(identity, catalogName, propertyName);
+            super.checkCanSetCatalogSessionProperty(transactionId, identity, catalogName, propertyName);
         }
     }
 
@@ -273,6 +319,7 @@ public class TestingAccessControlManager
     public enum TestingPrivilegeType
     {
         SET_USER,
+        CREATE_SCHEMA, DROP_SCHEMA, RENAME_SCHEMA,
         CREATE_TABLE, DROP_TABLE, RENAME_TABLE, SELECT_TABLE, INSERT_TABLE, DELETE_TABLE,
         ADD_COLUMN, RENAME_COLUMN,
         CREATE_VIEW, DROP_VIEW, SELECT_VIEW,
@@ -323,7 +370,7 @@ public class TestingAccessControlManager
         @Override
         public String toString()
         {
-            return MoreObjects.toStringHelper(this)
+            return toStringHelper(this)
                     .add("userName", userName)
                     .add("entityName", entityName)
                     .add("type", type)

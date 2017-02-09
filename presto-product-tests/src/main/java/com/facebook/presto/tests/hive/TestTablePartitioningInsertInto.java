@@ -40,11 +40,10 @@ public class TestTablePartitioningInsertInto
     private static final int NUMBER_OF_LINES_PER_SPLIT = 5;
     private static final String DATA_REVISION = "1";
     private static final HiveTableDefinition PARTITIONED_NATION =
-            HiveTableDefinition.builder()
-                    .setName(PARTITIONED_NATION_NAME)
+            HiveTableDefinition.builder(PARTITIONED_NATION_NAME)
                     .setCreateTableDDLTemplate("" +
-                            "CREATE EXTERNAL TABLE %NAME%(" +
-                            "   p_nationkey     INT," +
+                            "CREATE %EXTERNAL% TABLE %NAME%(" +
+                            "   p_nationkey     BIGINT," +
                             "   p_name          STRING," +
                             "   p_comment       STRING) " +
                             "PARTITIONED BY (p_regionkey INT)" +
@@ -55,16 +54,14 @@ public class TestTablePartitioningInsertInto
                     .build();
 
     private static final HiveTableDefinition TARGET_NATION =
-            HiveTableDefinition.builder()
-                    .setName(TARGET_NATION_NAME)
+            HiveTableDefinition.builder(TARGET_NATION_NAME)
                     .setCreateTableDDLTemplate("" +
-                            "CREATE EXTERNAL TABLE %NAME%(" +
-                            "   p_nationkey     INT," +
+                            "CREATE %EXTERNAL% TABLE %NAME%(" +
+                            "   p_nationkey     BIGINT," +
                             "   p_name          STRING," +
                             "   p_comment       STRING," +
                             "   p_regionkey     INT) " +
-                            "ROW FORMAT DELIMITED FIELDS TERMINATED BY '|' " +
-                            "LOCATION '%LOCATION%'")
+                            "ROW FORMAT DELIMITED FIELDS TERMINATED BY '|'")
                     .setNoData()
                     .build();
 

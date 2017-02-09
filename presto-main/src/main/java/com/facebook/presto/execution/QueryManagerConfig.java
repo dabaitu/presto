@@ -15,6 +15,7 @@ package com.facebook.presto.execution;
 
 import io.airlift.configuration.Config;
 import io.airlift.configuration.DefunctConfig;
+import io.airlift.configuration.LegacyConfig;
 import io.airlift.units.Duration;
 import io.airlift.units.MinDuration;
 
@@ -31,12 +32,13 @@ import java.util.concurrent.TimeUnit;
 public class QueryManagerConfig
 {
     private int scheduleSplitBatchSize = 1000;
+    private int minScheduleSplitBatchSize = 100;
     private int maxConcurrentQueries = 1000;
     private int maxQueuedQueries = 5000;
     private String queueConfigFile;
 
-    private int initialHashPartitions = 8;
-    private Duration maxQueryAge = new Duration(15, TimeUnit.MINUTES);
+    private int initialHashPartitions = 100;
+    private Duration minQueryExpireAge = new Duration(15, TimeUnit.MINUTES);
     private int maxQueryHistory = 100;
     private Duration clientTimeout = new Duration(5, TimeUnit.MINUTES);
 
@@ -47,6 +49,7 @@ public class QueryManagerConfig
 
     private String queryExecutionPolicy = "all-at-once";
     private Duration queryMaxRunTime = new Duration(100, TimeUnit.DAYS);
+    private Duration queryMaxCpuTime = new Duration(1_000_000_000, TimeUnit.DAYS);
 
     public String getQueueConfigFile()
     {
@@ -70,6 +73,19 @@ public class QueryManagerConfig
     public QueryManagerConfig setScheduleSplitBatchSize(int scheduleSplitBatchSize)
     {
         this.scheduleSplitBatchSize = scheduleSplitBatchSize;
+        return this;
+    }
+
+    @Min(1)
+    public int getMinScheduleSplitBatchSize()
+    {
+        return minScheduleSplitBatchSize;
+    }
+
+    @Config("query.min-schedule-split-batch-size")
+    public QueryManagerConfig setMinScheduleSplitBatchSize(int minScheduleSplitBatchSize)
+    {
+        this.minScheduleSplitBatchSize = minScheduleSplitBatchSize;
         return this;
     }
 
@@ -117,15 +133,16 @@ public class QueryManagerConfig
     }
 
     @NotNull
-    public Duration getMaxQueryAge()
+    public Duration getMinQueryExpireAge()
     {
-        return maxQueryAge;
+        return minQueryExpireAge;
     }
 
-    @Config("query.max-age")
-    public QueryManagerConfig setMaxQueryAge(Duration maxQueryAge)
+    @LegacyConfig("query.max-age")
+    @Config("query.min-expire-age")
+    public QueryManagerConfig setMinQueryExpireAge(Duration minQueryExpireAge)
     {
-        this.maxQueryAge = maxQueryAge;
+        this.minQueryExpireAge = minQueryExpireAge;
         return this;
     }
 
@@ -193,6 +210,20 @@ public class QueryManagerConfig
     public QueryManagerConfig setQueryMaxRunTime(Duration queryMaxRunTime)
     {
         this.queryMaxRunTime = queryMaxRunTime;
+        return this;
+    }
+
+    @NotNull
+    @MinDuration("1ns")
+    public Duration getQueryMaxCpuTime()
+    {
+        return queryMaxCpuTime;
+    }
+
+    @Config("query.max-cpu-time")
+    public QueryManagerConfig setQueryMaxCpuTime(Duration queryMaxCpuTime)
+    {
+        this.queryMaxCpuTime = queryMaxCpuTime;
         return this;
     }
 

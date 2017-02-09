@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.connector.system;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.spi.ColumnHandle;
 import com.facebook.presto.spi.ConnectorTableLayoutHandle;
 import com.facebook.presto.spi.predicate.TupleDomain;
@@ -22,15 +23,15 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import static java.util.Objects.requireNonNull;
 
 public class SystemTableLayoutHandle
-    implements ConnectorTableLayoutHandle
+        implements ConnectorTableLayoutHandle
 {
-    private final String connectorId;
+    private final ConnectorId connectorId;
     private final SystemTableHandle table;
     private final TupleDomain<ColumnHandle> constraint;
 
     @JsonCreator
     public SystemTableLayoutHandle(
-            @JsonProperty("connectorId") String connectorId,
+            @JsonProperty("connectorId") ConnectorId connectorId,
             @JsonProperty("table") SystemTableHandle table,
             @JsonProperty("constraint") TupleDomain<ColumnHandle> constraint)
     {
@@ -40,7 +41,7 @@ public class SystemTableLayoutHandle
     }
 
     @JsonProperty
-    public String getConnectorId()
+    public ConnectorId getConnectorId()
     {
         return connectorId;
     }

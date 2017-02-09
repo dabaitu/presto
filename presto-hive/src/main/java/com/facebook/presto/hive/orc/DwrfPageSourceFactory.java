@@ -14,9 +14,9 @@
 package com.facebook.presto.hive.orc;
 
 import com.facebook.hive.orc.OrcSerde;
+import com.facebook.presto.hive.HdfsEnvironment;
 import com.facebook.presto.hive.HiveColumnHandle;
 import com.facebook.presto.hive.HivePageSourceFactory;
-import com.facebook.presto.hive.HivePartitionKey;
 import com.facebook.presto.orc.metadata.DwrfMetadataReader;
 import com.facebook.presto.spi.ConnectorPageSource;
 import com.facebook.presto.spi.ConnectorSession;
@@ -35,7 +35,6 @@ import java.util.Properties;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcMaxBufferSize;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcMaxMergeDistance;
 import static com.facebook.presto.hive.HiveSessionProperties.getOrcStreamBufferSize;
-import static com.facebook.presto.hive.HiveSessionProperties.isOptimizedReaderEnabled;
 import static com.facebook.presto.hive.HiveUtil.isDeserializerClass;
 import static com.facebook.presto.hive.orc.OrcPageSourceFactory.createOrcPageSource;
 import static java.util.Objects.requireNonNull;
@@ -44,11 +43,13 @@ public class DwrfPageSourceFactory
         implements HivePageSourceFactory
 {
     private final TypeManager typeManager;
+    private final HdfsEnvironment hdfsEnvironment;
 
     @Inject
-    public DwrfPageSourceFactory(TypeManager typeManager)
+    public DwrfPageSourceFactory(TypeManager typeManager, HdfsEnvironment hdfsEnvironment)
     {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
+        this.hdfsEnvironment = requireNonNull(hdfsEnvironment, "hdfsEnvironment is null");
     }
 
     @Override
@@ -59,31 +60,29 @@ public class DwrfPageSourceFactory
             long length,
             Properties schema,
             List<HiveColumnHandle> columns,
-            List<HivePartitionKey> partitionKeys,
             TupleDomain<HiveColumnHandle> effectivePredicate,
             DateTimeZone hiveStorageTimeZone)
     {
-        if (!isOptimizedReaderEnabled(session)) {
-            return Optional.empty();
-        }
-
         if (!isDeserializerClass(schema, OrcSerde.class)) {
             return Optional.empty();
         }
 
         return Optional.of(createOrcPageSource(
                 new DwrfMetadataReader(),
+                hdfsEnvironment,
+                session.getUser(),
                 configuration,
                 path,
                 start,
                 length,
                 columns,
-                partitionKeys,
+                false,
                 effectivePredicate,
                 hiveStorageTimeZone,
                 typeManager,
                 getOrcMaxMergeDistance(session),
                 getOrcMaxBufferSize(session),
-                getOrcStreamBufferSize(session)));
+                getOrcStreamBufferSize(session),
+                false));
     }
 }

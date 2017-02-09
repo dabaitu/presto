@@ -21,13 +21,15 @@ import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.split.PageSinkManager;
+import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.facebook.presto.sql.planner.plan.TableWriterNode.WriterTarget;
 import com.google.common.collect.ImmutableList;
+import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.VarbinaryType.VARBINARY;
@@ -35,6 +37,8 @@ import static com.facebook.presto.sql.planner.plan.TableWriterNode.CreateHandle;
 import static com.facebook.presto.sql.planner.plan.TableWriterNode.InsertHandle;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
+import static io.airlift.concurrent.MoreFutures.getFutureValue;
+import static io.airlift.concurrent.MoreFutures.toListenableFuture;
 import static java.util.Objects.requireNonNull;
 
 public class TableWriterOperator
@@ -46,26 +50,26 @@ public class TableWriterOperator
             implements OperatorFactory
     {
         private final int operatorId;
+        private final PlanNodeId planNodeId;
         private final PageSinkManager pageSinkManager;
         private final WriterTarget target;
         private final List<Integer> inputChannels;
-        private final Optional<Integer> sampleWeightChannel;
         private final Session session;
         private boolean closed;
 
         public TableWriterOperatorFactory(int operatorId,
+                PlanNodeId planNodeId,
                 PageSinkManager pageSinkManager,
                 WriterTarget writerTarget,
                 List<Integer> inputChannels,
-                Optional<Integer> sampleWeightChannel,
                 Session session)
         {
             this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.inputChannels = requireNonNull(inputChannels, "inputChannels is null");
             this.pageSinkManager = requireNonNull(pageSinkManager, "pageSinkManager is null");
             checkArgument(writerTarget instanceof CreateHandle || writerTarget instanceof InsertHandle, "writerTarget must be CreateHandle or InsertHandle");
             this.target = requireNonNull(writerTarget, "writerTarget is null");
-            this.sampleWeightChannel = requireNonNull(sampleWeightChannel, "sampleWeightChannel is null");
             this.session = session;
         }
 
@@ -79,8 +83,8 @@ public class TableWriterOperator
         public Operator createOperator(DriverContext driverContext)
         {
             checkState(!closed, "Factory is already closed");
-            OperatorContext context = driverContext.addOperatorContext(operatorId, TableWriterOperator.class.getSimpleName());
-            return new TableWriterOperator(context, createPageSink(), inputChannels, sampleWeightChannel);
+            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, TableWriterOperator.class.getSimpleName());
+            return new TableWriterOperator(context, createPageSink(), inputChannels);
         }
 
         private ConnectorPageSink createPageSink()
@@ -103,7 +107,7 @@ public class TableWriterOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new TableWriterOperatorFactory(operatorId, pageSinkManager, target, inputChannels, sampleWeightChannel, session);
+            return new TableWriterOperatorFactory(operatorId, planNodeId, pageSinkManager, target, inputChannels, session);
         }
     }
 
@@ -114,9 +118,10 @@ public class TableWriterOperator
 
     private final OperatorContext operatorContext;
     private final ConnectorPageSink pageSink;
-    private final Optional<Integer> sampleWeightChannel;
     private final List<Integer> inputChannels;
 
+    private ListenableFuture<?> blocked = NOT_BLOCKED;
+    private CompletableFuture<Collection<Slice>> finishFuture;
     private State state = State.RUNNING;
     private long rowCount;
     private boolean committed;
@@ -124,12 +129,10 @@ public class TableWriterOperator
 
     public TableWriterOperator(OperatorContext operatorContext,
             ConnectorPageSink pageSink,
-            List<Integer> inputChannels,
-            Optional<Integer> sampleWeightChannel)
+            List<Integer> inputChannels)
     {
         this.operatorContext = requireNonNull(operatorContext, "operatorContext is null");
         this.pageSink = requireNonNull(pageSink, "pageSink is null");
-        this.sampleWeightChannel = requireNonNull(sampleWeightChannel, "sampleWeightChannel is null");
         this.inputChannels = requireNonNull(inputChannels, "inputChannels is null");
     }
 
@@ -150,48 +153,66 @@ public class TableWriterOperator
     {
         if (state == State.RUNNING) {
             state = State.FINISHING;
+            finishFuture = pageSink.finish();
+            blocked = toListenableFuture(finishFuture);
         }
     }
 
     @Override
     public boolean isFinished()
     {
-        return state == State.FINISHED;
+        updateBlockedIfNecessary();
+        return state == State.FINISHED && blocked == NOT_BLOCKED;
+    }
+
+    @Override
+    public ListenableFuture<?> isBlocked()
+    {
+        updateBlockedIfNecessary();
+        return blocked;
     }
 
     @Override
     public boolean needsInput()
     {
-        return state == State.RUNNING;
+        updateBlockedIfNecessary();
+        return state == State.RUNNING && blocked == NOT_BLOCKED;
+    }
+
+    private void updateBlockedIfNecessary()
+    {
+        if (blocked != NOT_BLOCKED && blocked.isDone()) {
+            blocked = NOT_BLOCKED;
+        }
     }
 
     @Override
     public void addInput(Page page)
     {
         requireNonNull(page, "page is null");
-        checkState(state == State.RUNNING, "Operator is %s", state);
+        checkState(needsInput(), "Operator does not need input");
 
         Block[] blocks = new Block[inputChannels.size()];
         for (int outputChannel = 0; outputChannel < inputChannels.size(); outputChannel++) {
             blocks[outputChannel] = page.getBlock(inputChannels.get(outputChannel));
         }
-        Block sampleWeightBlock = null;
-        if (sampleWeightChannel.isPresent()) {
-            sampleWeightBlock = page.getBlock(sampleWeightChannel.get());
+
+        CompletableFuture<?> future = pageSink.appendPage(new Page(blocks));
+        if (!future.isDone()) {
+            this.blocked = toListenableFuture(future);
         }
-        pageSink.appendPage(new Page(blocks), sampleWeightBlock);
         rowCount += page.getPositionCount();
     }
 
     @Override
     public Page getOutput()
     {
-        if (state != State.FINISHING) {
+        if (state != State.FINISHING || !blocked.isDone()) {
             return null;
         }
         state = State.FINISHED;
 
-        Collection<Slice> fragments = pageSink.commit();
+        Collection<Slice> fragments = getFutureValue(finishFuture);
         committed = true;
 
         PageBuilder page = new PageBuilder(TYPES);
@@ -220,7 +241,7 @@ public class TableWriterOperator
         if (!closed) {
             closed = true;
             if (!committed) {
-                pageSink.rollback();
+                pageSink.abort();
             }
         }
     }

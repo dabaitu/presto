@@ -18,17 +18,20 @@ import com.facebook.presto.plugin.jdbc.BaseJdbcConfig;
 import com.facebook.presto.plugin.jdbc.JdbcConnectorId;
 import com.facebook.presto.spi.SchemaTableName;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.spi.type.VarcharType;
+import com.facebook.presto.spi.type.Varchars;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableSet;
 import com.mysql.jdbc.Driver;
+import com.mysql.jdbc.Statement;
 
 import javax.inject.Inject;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.Set;
 
 import static java.util.Locale.ENGLISH;
@@ -42,6 +45,9 @@ public class MySqlClient
     {
         super(connectorId, config, "`", new Driver());
         connectionProperties.setProperty("nullCatalogMeansCurrent", "false");
+        connectionProperties.setProperty("useUnicode", "true");
+        connectionProperties.setProperty("characterEncoding", "utf8");
+        connectionProperties.setProperty("tinyInt1isBit", "false");
         if (mySqlConfig.isAutoReconnect()) {
             connectionProperties.setProperty("autoReconnect", String.valueOf(mySqlConfig.isAutoReconnect()));
             connectionProperties.setProperty("maxReconnects", String.valueOf(mySqlConfig.getMaxReconnects()));
@@ -73,12 +79,12 @@ public class MySqlClient
     }
 
     @Override
-    public Statement getStatement(Connection connection)
+    public PreparedStatement getPreparedStatement(Connection connection, String sql)
             throws SQLException
     {
-        Statement statement = connection.createStatement();
-        if (statement.isWrapperFor(com.mysql.jdbc.Statement.class)) {
-            statement.unwrap(com.mysql.jdbc.Statement.class).enableStreamingResults();
+        PreparedStatement statement = connection.prepareStatement(sql);
+        if (statement.isWrapperFor(Statement.class)) {
+            statement.unwrap(Statement.class).enableStreamingResults();
         }
         return statement;
     }
@@ -110,10 +116,22 @@ public class MySqlClient
     @Override
     protected String toSqlType(Type type)
     {
+        if (Varchars.isVarcharType(type)) {
+            VarcharType varcharType = (VarcharType) type;
+            if (varcharType.getLength() <= 255) {
+                return "tinytext";
+            }
+            if (varcharType.getLength() <= 65535) {
+                return "text";
+            }
+            if (varcharType.getLength() <= 16777215) {
+                return "mediumtext";
+            }
+            return "longtext";
+        }
+
         String sqlType = super.toSqlType(type);
         switch (sqlType) {
-            case "varchar":
-                return "mediumtext";
             case "varbinary":
                 return "mediumblob";
             case "time with timezone":

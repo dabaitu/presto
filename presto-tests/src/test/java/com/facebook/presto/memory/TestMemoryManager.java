@@ -14,11 +14,11 @@
 package com.facebook.presto.memory;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.execution.QueryId;
 import com.facebook.presto.execution.QueryInfo;
 import com.facebook.presto.execution.TaskInfo;
 import com.facebook.presto.operator.DriverStats;
 import com.facebook.presto.server.testing.TestingPrestoServer;
+import com.facebook.presto.spi.QueryId;
 import com.facebook.presto.testing.QueryRunner;
 import com.facebook.presto.tests.DistributedQueryRunner;
 import com.facebook.presto.tpch.TpchPlugin;
@@ -34,6 +34,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 
+import static com.facebook.presto.SystemSessionProperties.RESOURCE_OVERCOMMIT;
 import static com.facebook.presto.execution.QueryState.FINISHED;
 import static com.facebook.presto.execution.StageInfo.getAllStages;
 import static com.facebook.presto.memory.LocalMemoryManager.GENERAL_POOL;
@@ -49,6 +50,7 @@ import static org.testng.Assert.assertFalse;
 import static org.testng.Assert.assertNotEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
+import static org.testng.Assert.fail;
 
 @Test(singleThreaded = true)
 public class TestMemoryManager
@@ -66,13 +68,38 @@ public class TestMemoryManager
 
     private final ExecutorService executor = newCachedThreadPool();
 
+    @Test(timeOut = 240_000)
+    public void testResourceOverCommit()
+            throws Exception
+    {
+        Map<String, String> properties = ImmutableMap.<String, String>builder()
+                .put("query.max-memory-per-node", "1kB")
+                .put("query.max-memory", "1kB")
+                .build();
+
+        try (DistributedQueryRunner queryRunner = createQueryRunner(TINY_SESSION, properties)) {
+            try {
+                queryRunner.execute("SELECT COUNT(*), clerk FROM orders GROUP BY clerk");
+                fail();
+            }
+            catch (RuntimeException e) {
+                // expected
+            }
+            Session session = testSessionBuilder()
+                    .setCatalog("tpch")
+                    .setSchema("tiny")
+                    .setSystemProperty(RESOURCE_OVERCOMMIT, "true")
+                    .build();
+            queryRunner.execute(session, "SELECT COUNT(*), clerk FROM orders GROUP BY clerk");
+        }
+    }
+
     @Test(timeOut = 240_000, expectedExceptions = ExecutionException.class, expectedExceptionsMessageRegExp = ".*The cluster is out of memory, and your query was killed. Please try again in a few minutes.")
     public void testOutOfMemoryKiller()
             throws Exception
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("task.verbose-stats", "true")
-                .put("task.operator-pre-allocated-memory", "0B")
                 .put("query.low-memory-killer.delay", "5s")
                 .put("query.low-memory-killer.enabled", "true")
                 .build();
@@ -131,7 +158,6 @@ public class TestMemoryManager
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("task.verbose-stats", "true")
-                .put("task.operator-pre-allocated-memory", "0B")
                 .build();
 
         try (DistributedQueryRunner queryRunner = createQueryRunner(TINY_SESSION, properties)) {
@@ -160,7 +186,6 @@ public class TestMemoryManager
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("task.verbose-stats", "true")
-                .put("task.operator-pre-allocated-memory", "0B")
                 .build();
 
         try (DistributedQueryRunner queryRunner = createQueryRunner(TINY_SESSION, properties)) {
@@ -273,9 +298,21 @@ public class TestMemoryManager
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("query.max-memory", "1kB")
-                .put("task.operator-pre-allocated-memory", "0B")
                 .build();
         try (QueryRunner queryRunner = createQueryRunner(SESSION, properties)) {
+            queryRunner.execute(SESSION, "SELECT COUNT(*), clerk FROM orders GROUP BY clerk");
+        }
+    }
+
+    @Test(timeOut = 240_000, expectedExceptions = RuntimeException.class, expectedExceptionsMessageRegExp = "Exceeded CPU limit of .*")
+    public void testQueryCpuLimit()
+            throws Exception
+    {
+        Map<String, String> properties = ImmutableMap.<String, String>builder()
+                .put("query.max-cpu-time", "1ms")
+                .build();
+        try (QueryRunner queryRunner = createQueryRunner(SESSION, properties)) {
+            // the following test query is known to run for a long time
             queryRunner.execute(SESSION, "SELECT COUNT(*), clerk FROM orders GROUP BY clerk");
         }
     }
@@ -286,7 +323,6 @@ public class TestMemoryManager
     {
         Map<String, String> properties = ImmutableMap.<String, String>builder()
                 .put("query.max-memory-per-node", "1kB")
-                .put("task.operator-pre-allocated-memory", "0B")
                 .build();
         try (QueryRunner queryRunner = createQueryRunner(SESSION, properties)) {
             queryRunner.execute(SESSION, "SELECT COUNT(*), clerk FROM orders GROUP BY clerk");

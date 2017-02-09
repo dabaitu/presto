@@ -13,21 +13,26 @@
  */
 package com.facebook.presto.type;
 
-import com.facebook.presto.operator.scalar.ScalarOperator;
 import com.facebook.presto.spi.PrestoException;
+import com.facebook.presto.spi.function.IsNull;
+import com.facebook.presto.spi.function.LiteralParameters;
+import com.facebook.presto.spi.function.ScalarOperator;
+import com.facebook.presto.spi.function.SqlType;
 import com.facebook.presto.spi.type.StandardTypes;
 import io.airlift.slice.Slice;
+import io.airlift.slice.XxHash64;
 
-import static com.facebook.presto.metadata.OperatorType.BETWEEN;
-import static com.facebook.presto.metadata.OperatorType.CAST;
-import static com.facebook.presto.metadata.OperatorType.EQUAL;
-import static com.facebook.presto.metadata.OperatorType.GREATER_THAN;
-import static com.facebook.presto.metadata.OperatorType.GREATER_THAN_OR_EQUAL;
-import static com.facebook.presto.metadata.OperatorType.HASH_CODE;
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN;
-import static com.facebook.presto.metadata.OperatorType.LESS_THAN_OR_EQUAL;
-import static com.facebook.presto.metadata.OperatorType.NOT_EQUAL;
 import static com.facebook.presto.spi.StandardErrorCode.INVALID_CAST_ARGUMENT;
+import static com.facebook.presto.spi.function.OperatorType.BETWEEN;
+import static com.facebook.presto.spi.function.OperatorType.CAST;
+import static com.facebook.presto.spi.function.OperatorType.EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN;
+import static com.facebook.presto.spi.function.OperatorType.GREATER_THAN_OR_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.HASH_CODE;
+import static com.facebook.presto.spi.function.OperatorType.IS_DISTINCT_FROM;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN;
+import static com.facebook.presto.spi.function.OperatorType.LESS_THAN_OR_EQUAL;
+import static com.facebook.presto.spi.function.OperatorType.NOT_EQUAL;
 import static java.lang.String.format;
 
 public final class VarcharOperators
@@ -36,58 +41,66 @@ public final class VarcharOperators
     {
     }
 
+    @LiteralParameters({"x", "y"})
     @ScalarOperator(EQUAL)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean equal(@SqlType(StandardTypes.VARCHAR) Slice left, @SqlType(StandardTypes.VARCHAR) Slice right)
+    public static boolean equal(@SqlType("varchar(x)") Slice left, @SqlType("varchar(y)") Slice right)
     {
         return left.equals(right);
     }
 
+    @LiteralParameters({"x", "y"})
     @ScalarOperator(NOT_EQUAL)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean notEqual(@SqlType(StandardTypes.VARCHAR) Slice left, @SqlType(StandardTypes.VARCHAR) Slice right)
+    public static boolean notEqual(@SqlType("varchar(x)") Slice left, @SqlType("varchar(y)") Slice right)
     {
         return !left.equals(right);
     }
 
+    @LiteralParameters({"x", "y"})
     @ScalarOperator(LESS_THAN)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean lessThan(@SqlType(StandardTypes.VARCHAR) Slice left, @SqlType(StandardTypes.VARCHAR) Slice right)
+    public static boolean lessThan(@SqlType("varchar(x)") Slice left, @SqlType("varchar(y)") Slice right)
     {
         return left.compareTo(right) < 0;
     }
 
+    @LiteralParameters({"x", "y"})
     @ScalarOperator(LESS_THAN_OR_EQUAL)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean lessThanOrEqual(@SqlType(StandardTypes.VARCHAR) Slice left, @SqlType(StandardTypes.VARCHAR) Slice right)
+    public static boolean lessThanOrEqual(@SqlType("varchar(x)") Slice left, @SqlType("varchar(y)") Slice right)
     {
         return left.compareTo(right) <= 0;
     }
 
+    @LiteralParameters({"x", "y"})
     @ScalarOperator(GREATER_THAN)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean greaterThan(@SqlType(StandardTypes.VARCHAR) Slice left, @SqlType(StandardTypes.VARCHAR) Slice right)
+    public static boolean greaterThan(@SqlType("varchar(x)") Slice left, @SqlType("varchar(y)") Slice right)
     {
         return left.compareTo(right) > 0;
     }
 
+    @LiteralParameters({"x", "y"})
     @ScalarOperator(GREATER_THAN_OR_EQUAL)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean greaterThanOrEqual(@SqlType(StandardTypes.VARCHAR) Slice left, @SqlType(StandardTypes.VARCHAR) Slice right)
+    public static boolean greaterThanOrEqual(@SqlType("varchar(x)") Slice left, @SqlType("varchar(y)") Slice right)
     {
         return left.compareTo(right) >= 0;
     }
 
+    @LiteralParameters({"x", "y", "z"})
     @ScalarOperator(BETWEEN)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean between(@SqlType(StandardTypes.VARCHAR) Slice value, @SqlType(StandardTypes.VARCHAR) Slice min, @SqlType(StandardTypes.VARCHAR) Slice max)
+    public static boolean between(@SqlType("varchar(x)") Slice value, @SqlType("varchar(y)") Slice min, @SqlType("varchar(z)") Slice max)
     {
         return min.compareTo(value) <= 0 && value.compareTo(max) <= 0;
     }
 
+    @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.BOOLEAN)
-    public static boolean castToBoolean(@SqlType(StandardTypes.VARCHAR) Slice value)
+    public static boolean castToBoolean(@SqlType("varchar(x)") Slice value)
     {
         if (value.length() == 1) {
             byte character = toUpperCase(value.getByte(0));
@@ -126,9 +139,10 @@ public final class VarcharOperators
         return (b >= 'a') && (b <= 'z');
     }
 
+    @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.DOUBLE)
-    public static double castToDouble(@SqlType(StandardTypes.VARCHAR) Slice slice)
+    public static double castToDouble(@SqlType("varchar(x)") Slice slice)
     {
         try {
             return Double.parseDouble(slice.toStringUtf8());
@@ -138,9 +152,23 @@ public final class VarcharOperators
         }
     }
 
+    @LiteralParameters("x")
+    @ScalarOperator(CAST)
+    @SqlType(StandardTypes.REAL)
+    public static long castToFloat(@SqlType("varchar(x)") Slice slice)
+    {
+        try {
+            return Float.floatToIntBits(Float.parseFloat(slice.toStringUtf8()));
+        }
+        catch (Exception e) {
+            throw new PrestoException(INVALID_CAST_ARGUMENT, format("Can not cast '%s' to REAL", slice.toStringUtf8()));
+        }
+    }
+
+    @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.BIGINT)
-    public static long castToBigint(@SqlType(StandardTypes.VARCHAR) Slice slice)
+    public static long castToBigint(@SqlType("varchar(x)") Slice slice)
     {
         try {
             return Long.parseLong(slice.toStringUtf8());
@@ -150,17 +178,76 @@ public final class VarcharOperators
         }
     }
 
+    @LiteralParameters("x")
+    @ScalarOperator(CAST)
+    @SqlType(StandardTypes.INTEGER)
+    public static long castToInteger(@SqlType("varchar(x)") Slice slice)
+    {
+        try {
+            return Integer.parseInt(slice.toStringUtf8());
+        }
+        catch (Exception e) {
+            throw new PrestoException(INVALID_CAST_ARGUMENT, format("Can not cast '%s' to INT", slice.toStringUtf8()));
+        }
+    }
+
+    @LiteralParameters("x")
+    @ScalarOperator(CAST)
+    @SqlType(StandardTypes.SMALLINT)
+    public static long castToSmallint(@SqlType("varchar(x)") Slice slice)
+    {
+        try {
+            return Short.parseShort(slice.toStringUtf8());
+        }
+        catch (Exception e) {
+            throw new PrestoException(INVALID_CAST_ARGUMENT, format("Can not cast '%s' to SMALLINT", slice.toStringUtf8()));
+        }
+    }
+
+    @LiteralParameters("x")
+    @ScalarOperator(CAST)
+    @SqlType(StandardTypes.TINYINT)
+    public static long castToTinyint(@SqlType("varchar(x)") Slice slice)
+    {
+        try {
+            return Byte.parseByte(slice.toStringUtf8());
+        }
+        catch (Exception e) {
+            throw new PrestoException(INVALID_CAST_ARGUMENT, format("Can not cast '%s' to TINYINT", slice.toStringUtf8()));
+        }
+    }
+
+    @LiteralParameters("x")
     @ScalarOperator(CAST)
     @SqlType(StandardTypes.VARBINARY)
-    public static Slice castToBinary(@SqlType(StandardTypes.VARCHAR) Slice slice)
+    public static Slice castToBinary(@SqlType("varchar(x)") Slice slice)
     {
         return slice;
     }
 
+    @LiteralParameters("x")
     @ScalarOperator(HASH_CODE)
     @SqlType(StandardTypes.BIGINT)
-    public static long hashCode(@SqlType(StandardTypes.VARCHAR) Slice value)
+    public static long hashCode(@SqlType("varchar(x)") Slice value)
     {
-        return value.hashCode();
+        return XxHash64.hash(value);
+    }
+
+    @LiteralParameters({"x", "y"})
+    @ScalarOperator(IS_DISTINCT_FROM)
+    @SqlType(StandardTypes.BOOLEAN)
+    public static boolean isDistinctFrom(
+            @SqlType("varchar(x)") Slice left,
+            @IsNull boolean leftNull,
+            @SqlType("varchar(y)") Slice right,
+            @IsNull boolean rightNull)
+    {
+        if (leftNull != rightNull) {
+            return true;
+        }
+        if (leftNull) {
+            return false;
+        }
+        return notEqual(left, right);
     }
 }

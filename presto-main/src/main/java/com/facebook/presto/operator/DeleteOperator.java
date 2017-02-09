@@ -19,6 +19,7 @@ import com.facebook.presto.spi.UpdatablePageSource;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
 import com.facebook.presto.spi.type.Type;
+import com.facebook.presto.sql.planner.plan.PlanNodeId;
 import com.google.common.collect.ImmutableList;
 import com.google.common.util.concurrent.ListenableFuture;
 import io.airlift.slice.Slice;
@@ -26,7 +27,6 @@ import io.airlift.slice.Slice;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
@@ -45,12 +45,14 @@ public class DeleteOperator
             implements OperatorFactory
     {
         private final int operatorId;
+        private final PlanNodeId planNodeId;
         private final int rowIdChannel;
         private boolean closed;
 
-        public DeleteOperatorFactory(int operatorId, int rowIdChannel)
+        public DeleteOperatorFactory(int operatorId, PlanNodeId planNodeId, int rowIdChannel)
         {
             this.operatorId = operatorId;
+            this.planNodeId = requireNonNull(planNodeId, "planNodeId is null");
             this.rowIdChannel = rowIdChannel;
         }
 
@@ -64,7 +66,7 @@ public class DeleteOperator
         public Operator createOperator(DriverContext driverContext)
         {
             checkState(!closed, "Factory is already closed");
-            OperatorContext context = driverContext.addOperatorContext(operatorId, DeleteOperator.class.getSimpleName());
+            OperatorContext context = driverContext.addOperatorContext(operatorId, planNodeId, DeleteOperator.class.getSimpleName());
             return new DeleteOperator(context, rowIdChannel);
         }
 
@@ -77,7 +79,7 @@ public class DeleteOperator
         @Override
         public OperatorFactory duplicate()
         {
-            return new DeleteOperatorFactory(operatorId, rowIdChannel);
+            return new DeleteOperatorFactory(operatorId, planNodeId, rowIdChannel);
         }
     }
 
@@ -92,7 +94,7 @@ public class DeleteOperator
     private State state = State.RUNNING;
     private long rowCount;
     private boolean closed;
-    private CompletableFuture<Collection<Slice>> commitFuture;
+    private ListenableFuture<Collection<Slice>> finishFuture;
     private Supplier<Optional<UpdatablePageSource>> pageSource = Optional::empty;
 
     public DeleteOperator(OperatorContext operatorContext, int rowIdChannel)
@@ -118,8 +120,7 @@ public class DeleteOperator
     {
         if (state == State.RUNNING) {
             state = State.FINISHING;
-            commitFuture = pageSource().commit();
-            requireNonNull(commitFuture, "commitFuture is null");
+            finishFuture = toListenableFuture(pageSource().finish());
         }
     }
 
@@ -149,22 +150,21 @@ public class DeleteOperator
     @Override
     public ListenableFuture<?> isBlocked()
     {
-        if (commitFuture == null) {
+        if (finishFuture == null) {
             return NOT_BLOCKED;
         }
-
-        return toListenableFuture(commitFuture);
+        return finishFuture;
     }
 
     @Override
     public Page getOutput()
     {
-        if ((state != State.FINISHING) || !commitFuture.isDone()) {
+        if ((state != State.FINISHING) || !finishFuture.isDone()) {
             return null;
         }
         state = State.FINISHED;
 
-        Collection<Slice> fragments = getFutureValue(commitFuture);
+        Collection<Slice> fragments = getFutureValue(finishFuture);
 
         PageBuilder page = new PageBuilder(TYPES);
         BlockBuilder rowsBuilder = page.getBlockBuilder(0);
@@ -191,11 +191,11 @@ public class DeleteOperator
     {
         if (!closed) {
             closed = true;
-            if (commitFuture != null) {
-                commitFuture.cancel(true);
+            if (finishFuture != null) {
+                finishFuture.cancel(true);
             }
             else {
-                pageSource.get().ifPresent(UpdatablePageSource::rollback);
+                pageSource.get().ifPresent(UpdatablePageSource::abort);
             }
         }
     }

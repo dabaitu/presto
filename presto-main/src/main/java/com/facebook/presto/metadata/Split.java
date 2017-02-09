@@ -13,8 +13,10 @@
  */
 package com.facebook.presto.metadata;
 
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.spi.ConnectorSplit;
 import com.facebook.presto.spi.HostAddress;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
@@ -25,22 +27,31 @@ import static java.util.Objects.requireNonNull;
 
 public final class Split
 {
-    private final String connectorId;
+    private final ConnectorId connectorId;
+    private final ConnectorTransactionHandle transactionHandle;
     private final ConnectorSplit connectorSplit;
 
     @JsonCreator
     public Split(
-            @JsonProperty("connectorId") String connectorId,
+            @JsonProperty("connectorId") ConnectorId connectorId,
+            @JsonProperty("transactionHandle") ConnectorTransactionHandle transactionHandle,
             @JsonProperty("connectorSplit") ConnectorSplit connectorSplit)
     {
         this.connectorId = requireNonNull(connectorId, "connectorId is null");
+        this.transactionHandle = requireNonNull(transactionHandle, "transactionHandle is null");
         this.connectorSplit = requireNonNull(connectorSplit, "connectorSplit is null");
     }
 
     @JsonProperty
-    public String getConnectorId()
+    public ConnectorId getConnectorId()
     {
         return connectorId;
+    }
+
+    @JsonProperty
+    public ConnectorTransactionHandle getTransactionHandle()
+    {
+        return transactionHandle;
     }
 
     @JsonProperty
@@ -69,6 +80,7 @@ public final class Split
     {
         return toStringHelper(this)
                 .add("connectorId", connectorId)
+                .add("transactionHandle", transactionHandle)
                 .add("connectorSplit", connectorSplit)
                 .toString();
     }

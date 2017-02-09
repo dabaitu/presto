@@ -26,6 +26,7 @@ import com.facebook.presto.server.testing.TestingPrestoServer;
 import com.facebook.presto.spi.type.Type;
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.HttpClientConfig;
 import io.airlift.http.client.jetty.JettyHttpClient;
@@ -34,10 +35,14 @@ import io.airlift.units.Duration;
 import org.intellij.lang.annotations.Language;
 
 import java.io.Closeable;
+import java.net.URI;
 import java.util.List;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.concurrent.TimeUnit;
 
 import static com.facebook.presto.spi.type.TypeSignature.parseTypeSignature;
+import static com.facebook.presto.transaction.TransactionBuilder.transaction;
 import static com.google.common.collect.Iterables.transform;
 import static io.airlift.json.JsonCodec.jsonCodec;
 import static java.util.Objects.requireNonNull;
@@ -81,7 +86,7 @@ public abstract class AbstractTestingPrestoClient<T>
     {
         ResultsSession<T> resultsSession = getResultSession(session);
 
-        ClientSession clientSession = session.toClientSession(prestoServer.getBaseUrl(), true, new Duration(2, TimeUnit.MINUTES));
+        ClientSession clientSession = toClientSession(session, prestoServer.getBaseUrl(), true, new Duration(2, TimeUnit.MINUTES));
 
         try (StatementClient client = new StatementClient(httpClient, QUERY_RESULTS_CODEC, clientSession, sql)) {
             while (client.isValid()) {
@@ -116,14 +121,47 @@ public abstract class AbstractTestingPrestoClient<T>
         }
     }
 
+    private static ClientSession toClientSession(Session session, URI server, boolean debug, Duration clientRequestTimeout)
+    {
+        ImmutableMap.Builder<String, String> properties = ImmutableMap.builder();
+        properties.putAll(session.getSystemProperties());
+        for (Entry<String, Map<String, String>> connectorProperties : session.getUnprocessedCatalogProperties().entrySet()) {
+            for (Entry<String, String> entry : connectorProperties.getValue().entrySet()) {
+                properties.put(connectorProperties.getKey() + "." + entry.getKey(), entry.getValue());
+            }
+        }
+
+        return new ClientSession(
+                server,
+                session.getIdentity().getUser(),
+                session.getSource().orElse(null),
+                session.getCatalog().orElse(null),
+                session.getSchema().orElse(null),
+                session.getTimeZoneKey().getId(),
+                session.getLocale(),
+                properties.build(),
+                session.getPreparedStatements(),
+                session.getTransactionId().map(Object::toString).orElse(null),
+                debug,
+                clientRequestTimeout);
+    }
+
     public List<QualifiedObjectName> listTables(Session session, String catalog, String schema)
     {
-        return prestoServer.getMetadata().listTables(session, new QualifiedTablePrefix(catalog, schema));
+        return transaction(prestoServer.getTransactionManager(), prestoServer.getAccessControl())
+                .readOnly()
+                .execute(session, transactionSession -> {
+                    return prestoServer.getMetadata().listTables(transactionSession, new QualifiedTablePrefix(catalog, schema));
+                });
     }
 
     public boolean tableExists(Session session, String table)
     {
-        return MetadataUtil.tableExists(prestoServer.getMetadata(), session, table);
+        return transaction(prestoServer.getTransactionManager(), prestoServer.getAccessControl())
+                .readOnly()
+                .execute(session, transactionSession -> {
+                    return MetadataUtil.tableExists(prestoServer.getMetadata(), transactionSession, table);
+                });
     }
 
     public Session getDefaultSession()

@@ -14,7 +14,6 @@
 package com.facebook.presto.benchmark;
 
 import com.facebook.presto.Session;
-import com.facebook.presto.metadata.InMemoryNodeManager;
 import com.facebook.presto.testing.LocalQueryRunner;
 import com.facebook.presto.tpch.TpchConnectorFactory;
 import com.google.common.collect.ImmutableMap;
@@ -45,15 +44,14 @@ public final class BenchmarkQueryRunner
                 .setSchema(TINY_SCHEMA_NAME);
 
         if (hashingEnabled) {
-            sessionBuilder.setSystemProperties(ImmutableMap.of("optimizer.optimize_hash_generation", "true"));
+            sessionBuilder.setSystemProperty("optimizer.optimize_hash_generation", "true");
         }
 
         Session session = sessionBuilder.build();
         LocalQueryRunner localQueryRunner = new LocalQueryRunner(session);
 
         // add tpch
-        InMemoryNodeManager nodeManager = localQueryRunner.getNodeManager();
-        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(nodeManager, 1), ImmutableMap.<String, String>of());
+        localQueryRunner.createCatalog("tpch", new TpchConnectorFactory(1), ImmutableMap.<String, String>of());
 
         return localQueryRunner;
     }

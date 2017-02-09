@@ -17,47 +17,35 @@ package com.facebook.presto.plugin.blackhole;
 import com.facebook.presto.spi.ConnectorInsertTableHandle;
 import com.facebook.presto.spi.ConnectorOutputTableHandle;
 import com.facebook.presto.spi.ConnectorPageSink;
-import com.facebook.presto.spi.ConnectorPageSinkProvider;
 import com.facebook.presto.spi.ConnectorSession;
-import com.facebook.presto.spi.Page;
-import com.facebook.presto.spi.block.Block;
-import com.google.common.collect.ImmutableList;
-import io.airlift.slice.Slice;
+import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
+import com.google.common.util.concurrent.ListeningScheduledExecutorService;
 
-import java.util.Collection;
+import static com.facebook.presto.plugin.blackhole.Types.checkType;
+import static java.util.Objects.requireNonNull;
 
 public class BlackHolePageSinkProvider
         implements ConnectorPageSinkProvider
 {
-    @Override
-    public ConnectorPageSink createPageSink(ConnectorSession session, ConnectorOutputTableHandle outputTableHandle)
+    private final ListeningScheduledExecutorService executorService;
+
+    public BlackHolePageSinkProvider(ListeningScheduledExecutorService executorService)
     {
-        return new NoOpConnectorPageSink();
+        this.executorService = requireNonNull(executorService, "executorService is null");
     }
 
     @Override
-    public ConnectorPageSink createPageSink(ConnectorSession session, ConnectorInsertTableHandle insertTableHandle)
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorOutputTableHandle outputTableHandle)
     {
-        return new NoOpConnectorPageSink();
+        BlackHoleOutputTableHandle handle = checkType(outputTableHandle, BlackHoleOutputTableHandle.class, "outputTableHandle");
+        return new BlackHolePageSink(executorService, handle.getPageProcessingDelay());
     }
 
-    private static class NoOpConnectorPageSink
-            implements ConnectorPageSink
+    @Override
+    public ConnectorPageSink createPageSink(ConnectorTransactionHandle transactionHandle, ConnectorSession session, ConnectorInsertTableHandle insertTableHandle)
     {
-        @Override
-        public void appendPage(Page page, Block sampleWeightBlock)
-        {
-        }
-
-        @Override
-        public Collection<Slice> commit()
-        {
-            return ImmutableList.of();
-        }
-
-        @Override
-        public void rollback()
-        {
-        }
+        BlackHoleInsertTableHandle handle = checkType(insertTableHandle, BlackHoleInsertTableHandle.class, "insertTableHandle");
+        return new BlackHolePageSink(executorService, handle.getPageProcessingDelay());
     }
 }

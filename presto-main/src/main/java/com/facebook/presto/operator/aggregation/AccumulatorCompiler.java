@@ -13,31 +13,29 @@
  */
 package com.facebook.presto.operator.aggregation;
 
-import com.facebook.presto.byteCode.ByteCodeBlock;
-import com.facebook.presto.byteCode.ByteCodeNode;
-import com.facebook.presto.byteCode.ClassDefinition;
-import com.facebook.presto.byteCode.DynamicClassLoader;
-import com.facebook.presto.byteCode.FieldDefinition;
-import com.facebook.presto.byteCode.MethodDefinition;
-import com.facebook.presto.byteCode.Parameter;
-import com.facebook.presto.byteCode.Scope;
-import com.facebook.presto.byteCode.Variable;
-import com.facebook.presto.byteCode.control.ForLoop;
-import com.facebook.presto.byteCode.control.IfStatement;
-import com.facebook.presto.byteCode.expression.ByteCodeExpression;
+import com.facebook.presto.bytecode.BytecodeBlock;
+import com.facebook.presto.bytecode.BytecodeNode;
+import com.facebook.presto.bytecode.ClassDefinition;
+import com.facebook.presto.bytecode.DynamicClassLoader;
+import com.facebook.presto.bytecode.FieldDefinition;
+import com.facebook.presto.bytecode.MethodDefinition;
+import com.facebook.presto.bytecode.Parameter;
+import com.facebook.presto.bytecode.Scope;
+import com.facebook.presto.bytecode.Variable;
+import com.facebook.presto.bytecode.control.ForLoop;
+import com.facebook.presto.bytecode.control.IfStatement;
+import com.facebook.presto.bytecode.expression.BytecodeExpression;
 import com.facebook.presto.operator.GroupByIdBlock;
-import com.facebook.presto.operator.aggregation.state.AccumulatorStateFactory;
-import com.facebook.presto.operator.aggregation.state.AccumulatorStateSerializer;
 import com.facebook.presto.spi.Page;
 import com.facebook.presto.spi.block.Block;
 import com.facebook.presto.spi.block.BlockBuilder;
+import com.facebook.presto.spi.function.AccumulatorStateFactory;
+import com.facebook.presto.spi.function.AccumulatorStateSerializer;
 import com.facebook.presto.spi.type.Type;
 import com.facebook.presto.sql.gen.CallSiteBinder;
 import com.facebook.presto.sql.gen.CompilerOperations;
 import com.google.common.collect.ImmutableList;
 import io.airlift.slice.Slice;
-
-import javax.annotation.Nullable;
 
 import java.lang.invoke.MethodHandle;
 import java.util.ArrayList;
@@ -46,25 +44,23 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Function;
 
-import static com.facebook.presto.byteCode.Access.FINAL;
-import static com.facebook.presto.byteCode.Access.PRIVATE;
-import static com.facebook.presto.byteCode.Access.PUBLIC;
-import static com.facebook.presto.byteCode.Access.a;
-import static com.facebook.presto.byteCode.OpCode.NOP;
-import static com.facebook.presto.byteCode.Parameter.arg;
-import static com.facebook.presto.byteCode.ParameterizedType.type;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantInt;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.constantString;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.invokeStatic;
-import static com.facebook.presto.byteCode.expression.ByteCodeExpressions.not;
+import static com.facebook.presto.bytecode.Access.FINAL;
+import static com.facebook.presto.bytecode.Access.PRIVATE;
+import static com.facebook.presto.bytecode.Access.PUBLIC;
+import static com.facebook.presto.bytecode.Access.a;
+import static com.facebook.presto.bytecode.CompilerUtils.defineClass;
+import static com.facebook.presto.bytecode.CompilerUtils.makeClassName;
+import static com.facebook.presto.bytecode.Parameter.arg;
+import static com.facebook.presto.bytecode.ParameterizedType.type;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantInt;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.constantString;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.invokeStatic;
+import static com.facebook.presto.bytecode.expression.BytecodeExpressions.not;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.ParameterMetadata;
 import static com.facebook.presto.operator.aggregation.AggregationMetadata.countInputChannels;
-import static com.facebook.presto.sql.gen.ByteCodeUtils.invoke;
-import static com.facebook.presto.sql.gen.CompilerUtils.defineClass;
-import static com.facebook.presto.sql.gen.CompilerUtils.makeClassName;
-import static com.facebook.presto.sql.gen.SqlTypeByteCodeExpression.constantType;
+import static com.facebook.presto.sql.gen.BytecodeUtils.invoke;
+import static com.facebook.presto.sql.gen.SqlTypeBytecodeExpression.constantType;
 import static com.google.common.base.Preconditions.checkState;
-import static java.util.Objects.requireNonNull;
 
 public class AccumulatorCompiler
 {
@@ -84,8 +80,7 @@ public class AccumulatorCompiler
                 metadata.getStateSerializer(),
                 metadata.getStateFactory(),
                 accumulatorClass,
-                groupedAccumulatorClass,
-                metadata.isApproximate());
+                groupedAccumulatorClass);
     }
 
     private static <T> Class<? extends T> generateAccumulatorClass(
@@ -94,7 +89,6 @@ public class AccumulatorCompiler
             DynamicClassLoader classLoader)
     {
         boolean grouped = accumulatorInterface == GroupedAccumulator.class;
-        boolean approximate = metadata.isApproximate();
 
         ClassDefinition definition = new ClassDefinition(
                 a(PUBLIC, FINAL),
@@ -111,12 +105,6 @@ public class AccumulatorCompiler
         FieldDefinition stateFactoryField = definition.declareField(a(PRIVATE, FINAL), "stateFactory", AccumulatorStateFactory.class);
         FieldDefinition inputChannelsField = definition.declareField(a(PRIVATE, FINAL), "inputChannels", type(List.class, Integer.class));
         FieldDefinition maskChannelField = definition.declareField(a(PRIVATE, FINAL), "maskChannel", type(Optional.class, Integer.class));
-        FieldDefinition sampleWeightChannelField = null;
-        FieldDefinition confidenceField = null;
-        if (approximate) {
-            sampleWeightChannelField = definition.declareField(a(PRIVATE, FINAL), "sampleWeightChannel", type(Optional.class, Integer.class));
-            confidenceField = definition.declareField(a(PRIVATE, FINAL), "confidence", double.class);
-        }
         FieldDefinition stateField = definition.declareField(a(PRIVATE, FINAL), "state", grouped ? stateFactory.getGroupedStateClass() : stateFactory.getSingleStateClass());
 
         // Generate constructor
@@ -126,23 +114,16 @@ public class AccumulatorCompiler
                 stateFactoryField,
                 inputChannelsField,
                 maskChannelField,
-                sampleWeightChannelField,
-                confidenceField,
                 stateField,
                 grouped);
 
         // Generate methods
-        generateAddInput(definition, stateField, inputChannelsField, maskChannelField, sampleWeightChannelField, metadata.getInputMetadata(), metadata.getInputFunction(), callSiteBinder, grouped);
+        generateAddInput(definition, stateField, inputChannelsField, maskChannelField, metadata.getInputMetadata(), metadata.getInputFunction(), callSiteBinder, grouped);
         generateGetEstimatedSize(definition, stateField);
         generateGetIntermediateType(definition, callSiteBinder, stateSerializer.getSerializedType());
         generateGetFinalType(definition, callSiteBinder, metadata.getOutputType());
 
-        if (metadata.getIntermediateInputFunction() == null) {
-            generateAddIntermediateAsCombine(definition, stateField, stateSerializerField, stateFactoryField, metadata.getCombineFunction(), stateFactory.getSingleStateClass(), callSiteBinder, grouped);
-        }
-        else {
-            generateAddIntermediateAsIntermediateInput(definition, stateField, metadata.getIntermediateInputMetadata(), metadata.getIntermediateInputFunction(), callSiteBinder, grouped);
-        }
+        generateAddIntermediateAsCombine(definition, stateField, stateSerializerField, stateFactoryField, metadata.getCombineFunction(), stateFactory.getSingleStateClass(), callSiteBinder, grouped);
 
         if (grouped) {
             generateGroupedEvaluateIntermediate(definition, stateSerializerField, stateField);
@@ -152,10 +133,10 @@ public class AccumulatorCompiler
         }
 
         if (grouped) {
-            generateGroupedEvaluateFinal(definition, confidenceField, stateField, metadata.getOutputFunction(), metadata.isApproximate(), callSiteBinder);
+            generateGroupedEvaluateFinal(definition, stateField, metadata.getOutputFunction(), callSiteBinder);
         }
         else {
-            generateEvaluateFinal(definition, confidenceField, stateField, metadata.getOutputFunction(), metadata.isApproximate(), callSiteBinder);
+            generateEvaluateFinal(definition, stateField, metadata.getOutputFunction(), callSiteBinder);
         }
 
         return defineClass(definition, accumulatorInterface, callSiteBinder.getBindings(), classLoader);
@@ -186,7 +167,7 @@ public class AccumulatorCompiler
     private static void generateGetEstimatedSize(ClassDefinition definition, FieldDefinition stateField)
     {
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "getEstimatedSize", type(long.class));
-        ByteCodeExpression state = method.getThis().getField(stateField);
+        BytecodeExpression state = method.getThis().getField(stateField);
         method.getBody()
                 .append(state.invoke("getEstimatedSize", long.class).ret());
     }
@@ -196,7 +177,6 @@ public class AccumulatorCompiler
             FieldDefinition stateField,
             FieldDefinition inputChannelsField,
             FieldDefinition maskChannelField,
-            @Nullable FieldDefinition sampleWeightChannelField,
             List<ParameterMetadata> parameterMetadatas,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
@@ -211,7 +191,7 @@ public class AccumulatorCompiler
 
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "addInput", type(void.class), parameters.build());
         Scope scope = method.getScope();
-        ByteCodeBlock body = method.getBody();
+        BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
 
         if (grouped) {
@@ -223,10 +203,6 @@ public class AccumulatorCompiler
             parameterVariables.add(scope.declareVariable(Block.class, "block" + i));
         }
         Variable masksBlock = scope.declareVariable(Block.class, "masksBlock");
-        Variable sampleWeightsBlock = null;
-        if (sampleWeightChannelField != null) {
-            sampleWeightsBlock = scope.declareVariable(Block.class, "sampleWeightsBlock");
-        }
         body.comment("masksBlock = maskChannel.map(page.blockGetter()).orElse(null);")
                 .append(thisVariable.getField(maskChannelField))
                 .append(page)
@@ -236,17 +212,6 @@ public class AccumulatorCompiler
                 .invokeVirtual(Optional.class, "orElse", Object.class, Object.class)
                 .checkCast(Block.class)
                 .putVariable(masksBlock);
-
-        if (sampleWeightChannelField != null) {
-            body.comment("sampleWeightsBlock = sampleWeightChannel.map(page.blockGetter()).get();")
-                    .append(thisVariable.getField(sampleWeightChannelField))
-                    .append(page)
-                    .invokeStatic(type(AggregationUtils.class), "pageBlockGetter", type(Function.class, Integer.class, Block.class), type(Page.class))
-                    .invokeVirtual(Optional.class, "map", Optional.class, Function.class)
-                    .invokeVirtual(Optional.class, "get", Object.class)
-                    .checkCast(Block.class)
-                    .putVariable(sampleWeightsBlock);
-        }
 
         // Get all parameter blocks
         for (int i = 0; i < countInputChannels(parameterMetadatas); i++) {
@@ -260,42 +225,34 @@ public class AccumulatorCompiler
                     .invokeVirtual(Page.class, "getBlock", Block.class, int.class)
                     .putVariable(parameterVariables.get(i));
         }
-        ByteCodeBlock block = generateInputForLoop(stateField, parameterMetadatas, inputFunction, scope, parameterVariables, masksBlock, sampleWeightsBlock, callSiteBinder, grouped);
+        BytecodeBlock block = generateInputForLoop(stateField, parameterMetadatas, inputFunction, scope, parameterVariables, masksBlock, callSiteBinder, grouped);
 
         body.append(block);
         body.ret();
     }
 
-    private static ByteCodeBlock generateInputForLoop(
+    private static BytecodeBlock generateInputForLoop(
             FieldDefinition stateField,
             List<ParameterMetadata> parameterMetadatas,
             MethodHandle inputFunction,
             Scope scope,
             List<Variable> parameterVariables,
             Variable masksBlock,
-            @Nullable Variable sampleWeightsBlock,
             CallSiteBinder callSiteBinder,
             boolean grouped)
     {
         // For-loop over rows
         Variable page = scope.getVariable("page");
         Variable positionVariable = scope.declareVariable(int.class, "position");
-        Variable sampleWeightVariable = null;
-        if (sampleWeightsBlock != null) {
-            sampleWeightVariable = scope.declareVariable(long.class, "sampleWeight");
-        }
         Variable rowsVariable = scope.declareVariable(int.class, "rows");
 
-        ByteCodeBlock block = new ByteCodeBlock()
+        BytecodeBlock block = new BytecodeBlock()
                 .append(page)
                 .invokeVirtual(Page.class, "getPositionCount", int.class)
                 .putVariable(rowsVariable)
                 .initializeVariable(positionVariable);
-        if (sampleWeightVariable != null) {
-            block.initializeVariable(sampleWeightVariable);
-        }
 
-        ByteCodeNode loopBody = generateInvokeInputFunction(scope, stateField, positionVariable, sampleWeightVariable, parameterVariables, parameterMetadatas, inputFunction, callSiteBinder, grouped);
+        BytecodeNode loopBody = generateInvokeInputFunction(scope, stateField, positionVariable, parameterVariables, parameterMetadatas, inputFunction, callSiteBinder, grouped);
 
         //  Wrap with null checks
         List<Boolean> nullable = new ArrayList<>();
@@ -316,7 +273,7 @@ public class AccumulatorCompiler
             if (!nullable.get(i)) {
                 Variable variableDefinition = parameterVariables.get(i);
                 loopBody = new IfStatement("if(!%s.isNull(position))", variableDefinition.getName())
-                        .condition(new ByteCodeBlock()
+                        .condition(new BytecodeBlock()
                                 .getVariable(variableDefinition)
                                 .getVariable(positionVariable)
                                 .invokeInterface(Block.class, "isNull", boolean.class, int.class))
@@ -324,64 +281,36 @@ public class AccumulatorCompiler
             }
         }
 
-        // Check that sample weight is > 0 (also checks the mask)
-        if (sampleWeightVariable != null) {
-            loopBody = generateComputeSampleWeightAndCheckGreaterThanZero(loopBody, sampleWeightVariable, masksBlock, sampleWeightsBlock, positionVariable);
-        }
-        // Otherwise just check the mask
-        else {
-            loopBody = new IfStatement("if(testMask(%s, position))", masksBlock.getName())
-                    .condition(new ByteCodeBlock()
-                            .getVariable(masksBlock)
-                            .getVariable(positionVariable)
-                            .invokeStatic(CompilerOperations.class, "testMask", boolean.class, Block.class, int.class))
-                    .ifTrue(loopBody);
-        }
+        loopBody = new IfStatement("if(testMask(%s, position))", masksBlock.getName())
+                .condition(new BytecodeBlock()
+                        .getVariable(masksBlock)
+                        .getVariable(positionVariable)
+                        .invokeStatic(CompilerOperations.class, "testMask", boolean.class, Block.class, int.class))
+                .ifTrue(loopBody);
 
         block.append(new ForLoop()
-                .initialize(new ByteCodeBlock().putVariable(positionVariable, 0))
-                .condition(new ByteCodeBlock()
+                .initialize(new BytecodeBlock().putVariable(positionVariable, 0))
+                .condition(new BytecodeBlock()
                         .getVariable(positionVariable)
                         .getVariable(rowsVariable)
                         .invokeStatic(CompilerOperations.class, "lessThan", boolean.class, int.class, int.class))
-                .update(new ByteCodeBlock().incrementVariable(positionVariable, (byte) 1))
+                .update(new BytecodeBlock().incrementVariable(positionVariable, (byte) 1))
                 .body(loopBody));
 
         return block;
     }
 
-    private static ByteCodeNode generateComputeSampleWeightAndCheckGreaterThanZero(ByteCodeNode body, Variable sampleWeight, Variable masks, Variable sampleWeights, Variable position)
-    {
-        ByteCodeBlock block = new ByteCodeBlock()
-                .comment("sampleWeight = computeSampleWeight(masks, sampleWeights, position);")
-                .getVariable(masks)
-                .getVariable(sampleWeights)
-                .getVariable(position)
-                .invokeStatic(ApproximateUtils.class, "computeSampleWeight", long.class, Block.class, Block.class, int.class)
-                .putVariable(sampleWeight);
-
-        block.append(new IfStatement("if(sampleWeight > 0)")
-                .condition(new ByteCodeBlock()
-                        .getVariable(sampleWeight)
-                        .invokeStatic(CompilerOperations.class, "longGreaterThanZero", boolean.class, long.class))
-                .ifTrue(body)
-                .ifFalse(NOP));
-
-        return block;
-    }
-
-    private static ByteCodeBlock generateInvokeInputFunction(
+    private static BytecodeBlock generateInvokeInputFunction(
             Scope scope,
             FieldDefinition stateField,
             Variable position,
-            @Nullable Variable sampleWeight,
             List<Variable> parameterVariables,
             List<ParameterMetadata> parameterMetadatas,
             MethodHandle inputFunction,
             CallSiteBinder callSiteBinder,
             boolean grouped)
     {
-        ByteCodeBlock block = new ByteCodeBlock();
+        BytecodeBlock block = new BytecodeBlock();
 
         if (grouped) {
             generateSetGroupIdFromGroupIdsBlock(scope, stateField, block);
@@ -400,19 +329,15 @@ public class AccumulatorCompiler
                 case BLOCK_INDEX:
                     block.getVariable(position);
                     break;
-                case SAMPLE_WEIGHT:
-                    requireNonNull(sampleWeight, "sampleWeight is null");
-                    block.getVariable(sampleWeight);
-                    break;
                 case BLOCK_INPUT_CHANNEL:
                 case NULLABLE_BLOCK_INPUT_CHANNEL:
                     block.getVariable(parameterVariables.get(inputChannel));
                     inputChannel++;
                     break;
                 case INPUT_CHANNEL:
-                    ByteCodeBlock getBlockByteCode = new ByteCodeBlock()
+                    BytecodeBlock getBlockBytecode = new BytecodeBlock()
                             .getVariable(parameterVariables.get(inputChannel));
-                    pushStackType(scope, block, parameterMetadata.getSqlType(), getBlockByteCode, parameters[i], callSiteBinder);
+                    pushStackType(scope, block, parameterMetadata.getSqlType(), getBlockBytecode, parameters[i], callSiteBinder);
                     inputChannel++;
                     break;
                 default:
@@ -425,41 +350,41 @@ public class AccumulatorCompiler
     }
 
     // Assumes that there is a variable named 'position' in the block, which is the current index
-    private static void pushStackType(Scope scope, ByteCodeBlock block, Type sqlType, ByteCodeBlock getBlockByteCode, Class<?> parameter, CallSiteBinder callSiteBinder)
+    private static void pushStackType(Scope scope, BytecodeBlock block, Type sqlType, BytecodeBlock getBlockBytecode, Class<?> parameter, CallSiteBinder callSiteBinder)
     {
         Variable position = scope.getVariable("position");
         if (parameter == long.class) {
             block.comment("%s.getLong(block, position)", sqlType.getTypeSignature())
                     .append(constantType(callSiteBinder, sqlType))
-                    .append(getBlockByteCode)
+                    .append(getBlockBytecode)
                     .append(position)
                     .invokeInterface(Type.class, "getLong", long.class, Block.class, int.class);
         }
         else if (parameter == double.class) {
             block.comment("%s.getDouble(block, position)", sqlType.getTypeSignature())
                     .append(constantType(callSiteBinder, sqlType))
-                    .append(getBlockByteCode)
+                    .append(getBlockBytecode)
                     .append(position)
                     .invokeInterface(Type.class, "getDouble", double.class, Block.class, int.class);
         }
         else if (parameter == boolean.class) {
             block.comment("%s.getBoolean(block, position)", sqlType.getTypeSignature())
                     .append(constantType(callSiteBinder, sqlType))
-                    .append(getBlockByteCode)
+                    .append(getBlockBytecode)
                     .append(position)
                     .invokeInterface(Type.class, "getBoolean", boolean.class, Block.class, int.class);
         }
         else if (parameter == Slice.class) {
             block.comment("%s.getSlice(block, position)", sqlType.getTypeSignature())
                     .append(constantType(callSiteBinder, sqlType))
-                    .append(getBlockByteCode)
+                    .append(getBlockBytecode)
                     .append(position)
                     .invokeInterface(Type.class, "getSlice", Slice.class, Block.class, int.class);
         }
         else {
             block.comment("%s.getObject(block, position)", sqlType.getTypeSignature())
                     .append(constantType(callSiteBinder, sqlType))
-                    .append(getBlockByteCode)
+                    .append(getBlockBytecode)
                     .append(position)
                     .invokeInterface(Type.class, "getObject", Object.class, Block.class, int.class);
         }
@@ -477,7 +402,7 @@ public class AccumulatorCompiler
     {
         MethodDefinition method = declareAddIntermediate(definition, grouped);
         Scope scope = method.getScope();
-        ByteCodeBlock body = method.getBody();
+        BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
 
         Variable block = scope.getVariable("block");
@@ -494,7 +419,7 @@ public class AccumulatorCompiler
             generateEnsureCapacity(scope, stateField, body);
         }
 
-        ByteCodeBlock loopBody = new ByteCodeBlock();
+        BytecodeBlock loopBody = new BytecodeBlock();
 
         if (grouped) {
             Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
@@ -514,25 +439,25 @@ public class AccumulatorCompiler
                     .condition(not(scope.getVariable("groupIdsBlock").invoke("isNull", boolean.class, position)))
                     .ifTrue(loopBody);
 
-            loopBody = new ByteCodeBlock().append(ifStatement);
+            loopBody = new BytecodeBlock().append(ifStatement);
         }
 
         body.append(generateBlockNonNullPositionForLoop(scope, position, loopBody))
                 .ret();
     }
 
-    private static void generateSetGroupIdFromGroupIdsBlock(Scope scope, FieldDefinition stateField, ByteCodeBlock block)
+    private static void generateSetGroupIdFromGroupIdsBlock(Scope scope, FieldDefinition stateField, BytecodeBlock block)
     {
         Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
         Variable position = scope.getVariable("position");
-        ByteCodeExpression state = scope.getThis().getField(stateField);
+        BytecodeExpression state = scope.getThis().getField(stateField);
         block.append(state.invoke("setGroupId", void.class, groupIdsBlock.invoke("getGroupId", long.class, position)));
     }
 
-    private static void generateEnsureCapacity(Scope scope, FieldDefinition stateField, ByteCodeBlock block)
+    private static void generateEnsureCapacity(Scope scope, FieldDefinition stateField, BytecodeBlock block)
     {
         Variable groupIdsBlock = scope.getVariable("groupIdsBlock");
-        ByteCodeExpression state = scope.getThis().getField(stateField);
+        BytecodeExpression state = scope.getThis().getField(stateField);
         block.append(state.invoke("ensureCapacity", void.class, groupIdsBlock.invoke("getGroupCount", long.class)));
     }
 
@@ -551,53 +476,20 @@ public class AccumulatorCompiler
                 parameters.build());
     }
 
-    private static void generateAddIntermediateAsIntermediateInput(
-            ClassDefinition definition,
-            FieldDefinition stateField,
-            List<ParameterMetadata> parameterMetadatas,
-            MethodHandle intermediateInputFunction,
-            CallSiteBinder callSiteBinder,
-            boolean grouped)
-    {
-        MethodDefinition method = declareAddIntermediate(definition, grouped);
-        Scope scope = method.getScope();
-        ByteCodeBlock body = method.getBody();
-
-        if (grouped) {
-            generateEnsureCapacity(scope, stateField, body);
-        }
-
-        Variable positionVariable = scope.declareVariable(int.class, "position");
-
-        ByteCodeBlock loopBody = generateInvokeInputFunction(scope, stateField, positionVariable, null, ImmutableList.of(scope.getVariable("block")), parameterMetadatas, intermediateInputFunction, callSiteBinder, grouped);
-
-        if (grouped) {
-            // skip rows with null group id
-            IfStatement ifStatement = new IfStatement("if (!groupIdsBlock.isNull(position))")
-                    .condition(not(scope.getVariable("groupIdsBlock").invoke("isNull", boolean.class, positionVariable)))
-                    .ifTrue(loopBody);
-
-            loopBody = new ByteCodeBlock().append(ifStatement);
-        }
-
-        body.append(generateBlockNonNullPositionForLoop(scope, positionVariable, loopBody))
-                .ret();
-    }
-
     // Generates a for-loop with a local variable named "position" defined, with the current position in the block,
     // loopBody will only be executed for non-null positions in the Block
-    private static ByteCodeBlock generateBlockNonNullPositionForLoop(Scope scope, Variable positionVariable, ByteCodeBlock loopBody)
+    private static BytecodeBlock generateBlockNonNullPositionForLoop(Scope scope, Variable positionVariable, BytecodeBlock loopBody)
     {
         Variable rowsVariable = scope.declareVariable(int.class, "rows");
         Variable blockVariable = scope.getVariable("block");
 
-        ByteCodeBlock block = new ByteCodeBlock()
+        BytecodeBlock block = new BytecodeBlock()
                 .append(blockVariable)
                 .invokeInterface(Block.class, "getPositionCount", int.class)
                 .putVariable(rowsVariable);
 
         IfStatement ifStatement = new IfStatement("if(!block.isNull(position))")
-                .condition(new ByteCodeBlock()
+                .condition(new BytecodeBlock()
                         .append(blockVariable)
                         .append(positionVariable)
                         .invokeInterface(Block.class, "isNull", boolean.class, int.class))
@@ -605,11 +497,11 @@ public class AccumulatorCompiler
 
         block.append(new ForLoop()
                 .initialize(positionVariable.set(constantInt(0)))
-                .condition(new ByteCodeBlock()
+                .condition(new BytecodeBlock()
                         .append(positionVariable)
                         .append(rowsVariable)
                         .invokeStatic(CompilerOperations.class, "lessThan", boolean.class, int.class, int.class))
-                .update(new ByteCodeBlock().incrementVariable(positionVariable, (byte) 1))
+                .update(new BytecodeBlock().incrementVariable(positionVariable, (byte) 1))
                 .body(ifStatement));
 
         return block;
@@ -622,8 +514,8 @@ public class AccumulatorCompiler
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "evaluateIntermediate", type(void.class), groupId, out);
 
         Variable thisVariable = method.getThis();
-        ByteCodeExpression state = thisVariable.getField(stateField);
-        ByteCodeExpression stateSerializer = thisVariable.getField(stateSerializerField);
+        BytecodeExpression state = thisVariable.getField(stateField);
+        BytecodeExpression stateSerializer = thisVariable.getField(stateSerializerField);
 
         method.getBody()
                 .append(state.invoke("setGroupId", void.class, groupId.cast(long.class)))
@@ -641,8 +533,8 @@ public class AccumulatorCompiler
                 out);
 
         Variable thisVariable = method.getThis();
-        ByteCodeExpression stateSerializer = thisVariable.getField(stateSerializerField);
-        ByteCodeExpression state = thisVariable.getField(stateField);
+        BytecodeExpression stateSerializer = thisVariable.getField(stateSerializerField);
+        BytecodeExpression state = thisVariable.getField(stateField);
 
         method.getBody()
                 .append(stateSerializer.invoke("serialize", void.class, state.cast(Object.class), out))
@@ -651,29 +543,23 @@ public class AccumulatorCompiler
 
     private static void generateGroupedEvaluateFinal(
             ClassDefinition definition,
-            FieldDefinition confidenceField,
             FieldDefinition stateField,
             MethodHandle outputFunction,
-            boolean approximate,
             CallSiteBinder callSiteBinder)
     {
         Parameter groupId = arg("groupId", int.class);
         Parameter out = arg("out", BlockBuilder.class);
         MethodDefinition method = definition.declareMethod(a(PUBLIC), "evaluateFinal", type(void.class), groupId, out);
 
-        ByteCodeBlock body = method.getBody();
+        BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
 
-        ByteCodeExpression state = thisVariable.getField(stateField);
+        BytecodeExpression state = thisVariable.getField(stateField);
 
         body.append(state.invoke("setGroupId", void.class, groupId.cast(long.class)));
 
         body.comment("output(state, out)");
         body.append(state);
-        if (approximate) {
-            requireNonNull(confidenceField, "confidenceField is null");
-            body.append(thisVariable.getField(confidenceField));
-        }
         body.append(out);
         body.append(invoke(callSiteBinder.bind(outputFunction), "output"));
 
@@ -682,10 +568,8 @@ public class AccumulatorCompiler
 
     private static void generateEvaluateFinal(
             ClassDefinition definition,
-            FieldDefinition confidenceField,
             FieldDefinition stateField,
             MethodHandle outputFunction,
-            boolean approximate,
             CallSiteBinder callSiteBinder)
     {
         Parameter out = arg("out", BlockBuilder.class);
@@ -695,17 +579,13 @@ public class AccumulatorCompiler
                 type(void.class),
                 out);
 
-        ByteCodeBlock body = method.getBody();
+        BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
 
-        ByteCodeExpression state = thisVariable.getField(stateField);
+        BytecodeExpression state = thisVariable.getField(stateField);
 
         body.comment("output(state, out)");
         body.append(state);
-        if (approximate) {
-            requireNonNull(confidenceField, "confidenceField is null");
-            body.append(thisVariable.getField(confidenceField));
-        }
         body.append(out);
         body.append(invoke(callSiteBinder.bind(outputFunction), "output"));
 
@@ -718,8 +598,6 @@ public class AccumulatorCompiler
             FieldDefinition stateFactoryField,
             FieldDefinition inputChannelsField,
             FieldDefinition maskChannelField,
-            @Nullable FieldDefinition sampleWeightChannelField,
-            @Nullable FieldDefinition confidenceField,
             FieldDefinition stateField,
             boolean grouped)
     {
@@ -727,18 +605,14 @@ public class AccumulatorCompiler
         Parameter stateFactory = arg("stateFactory", AccumulatorStateFactory.class);
         Parameter inputChannels = arg("inputChannels", type(List.class, Integer.class));
         Parameter maskChannel = arg("maskChannel", type(Optional.class, Integer.class));
-        Parameter sampleWeightChannel = arg("sampleWeightChannel", type(Optional.class, Integer.class));
-        Parameter confidence = arg("confidence", double.class);
         MethodDefinition method = definition.declareConstructor(
                 a(PUBLIC),
                 stateSerializer,
                 stateFactory,
                 inputChannels,
-                maskChannel,
-                sampleWeightChannel,
-                confidence);
+                maskChannel);
 
-        ByteCodeBlock body = method.getBody();
+        BytecodeBlock body = method.getBody();
         Variable thisVariable = method.getThis();
 
         body.comment("super();")
@@ -750,10 +624,6 @@ public class AccumulatorCompiler
         body.append(thisVariable.setField(inputChannelsField, generateRequireNotNull(inputChannels)));
         body.append(thisVariable.setField(maskChannelField, generateRequireNotNull(maskChannel)));
 
-        if (sampleWeightChannelField != null) {
-            body.append(thisVariable.setField(sampleWeightChannelField, generateRequireNotNull(sampleWeightChannel)));
-        }
-
         String createState;
         if (grouped) {
             createState = "createGroupedState";
@@ -762,15 +632,11 @@ public class AccumulatorCompiler
             createState = "createSingleState";
         }
 
-        if (confidenceField != null) {
-            body.append(thisVariable.setField(confidenceField, confidence));
-        }
-
         body.append(thisVariable.setField(stateField, stateFactory.invoke(createState, Object.class).cast(stateField.getType())));
         body.ret();
     }
 
-    private static ByteCodeExpression generateRequireNotNull(Variable variable)
+    private static BytecodeExpression generateRequireNotNull(Variable variable)
     {
         return invokeStatic(Objects.class, "requireNonNull", Object.class, variable.cast(Object.class), constantString(variable.getName() + " is null"))
                 .cast(variable.getType());

@@ -13,6 +13,7 @@
  */
 package com.facebook.presto.sql.tree;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
 import java.util.List;
@@ -23,9 +24,10 @@ import java.util.stream.IntStream;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
 import static java.util.Objects.requireNonNull;
+import static java.util.stream.Collectors.toList;
 import static java.util.stream.Collectors.toSet;
 
-public class Rollup
+public final class Rollup
         extends GroupingElement
 {
     private final List<QualifiedName> columns;
@@ -43,8 +45,7 @@ public class Rollup
     private Rollup(Optional<NodeLocation> location, List<QualifiedName> columns)
     {
         super(location);
-        requireNonNull(columns, "columns is null");
-        this.columns = columns;
+        this.columns = ImmutableList.copyOf(requireNonNull(columns, "columns is null"));
     }
 
     public List<QualifiedName> getColumns()
@@ -53,18 +54,25 @@ public class Rollup
     }
 
     @Override
-    public Set<Set<Expression>> enumerateGroupingSets()
+    public List<Set<Expression>> enumerateGroupingSets()
     {
         int numColumns = columns.size();
-        Set<Set<Expression>> enumeratedGroupingSets = IntStream.range(0, numColumns)
-                .mapToObj(i -> columns.subList(0, numColumns - i)
-                        .stream()
-                        .map(QualifiedNameReference::new)
-                        .map(Expression.class::cast)
-                        .collect(toSet()))
-                .collect(toSet());
-        enumeratedGroupingSets.add(ImmutableSet.of());
-        return enumeratedGroupingSets;
+        return ImmutableList.<Set<Expression>>builder()
+                .addAll(IntStream.range(0, numColumns)
+                        .mapToObj(i -> columns.subList(0, numColumns - i)
+                                .stream()
+                                .map(QualifiedNameReference::new)
+                                .map(Expression.class::cast)
+                                .collect(toSet()))
+                        .collect(toList()))
+                .add(ImmutableSet.of())
+                .build();
+    }
+
+    @Override
+    protected <R, C> R accept(AstVisitor<R, C> visitor, C context)
+    {
+        return visitor.visitRollup(this, context);
     }
 
     @Override

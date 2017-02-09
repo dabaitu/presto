@@ -14,18 +14,30 @@
 
 package com.facebook.presto.plugin.blackhole;
 
-import com.facebook.presto.spi.Connector;
-import com.facebook.presto.spi.ConnectorHandleResolver;
-import com.facebook.presto.spi.ConnectorMetadata;
-import com.facebook.presto.spi.ConnectorPageSinkProvider;
-import com.facebook.presto.spi.ConnectorPageSourceProvider;
-import com.facebook.presto.spi.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.Connector;
+import com.facebook.presto.spi.connector.ConnectorMetadata;
+import com.facebook.presto.spi.connector.ConnectorNodePartitioningProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSinkProvider;
+import com.facebook.presto.spi.connector.ConnectorPageSourceProvider;
+import com.facebook.presto.spi.connector.ConnectorSplitManager;
+import com.facebook.presto.spi.connector.ConnectorTransactionHandle;
 import com.facebook.presto.spi.session.PropertyMetadata;
+import com.facebook.presto.spi.transaction.IsolationLevel;
+import com.facebook.presto.spi.type.TypeManager;
+import com.facebook.presto.spi.type.TypeSignatureParameter;
 import com.google.common.collect.ImmutableList;
+import io.airlift.units.Duration;
 
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 
 import static com.facebook.presto.spi.session.PropertyMetadata.integerSessionProperty;
+import static com.facebook.presto.spi.type.StandardTypes.ARRAY;
+import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
+import static com.facebook.presto.spi.type.VarcharType.createUnboundedVarcharType;
+import static java.util.Locale.ENGLISH;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static java.util.stream.Collectors.toList;
 
 public class BlackHoleConnector
         implements Connector
@@ -34,34 +46,50 @@ public class BlackHoleConnector
     public static final String PAGES_PER_SPLIT_PROPERTY = "pages_per_split";
     public static final String ROWS_PER_PAGE_PROPERTY = "rows_per_page";
     public static final String FIELD_LENGTH_PROPERTY = "field_length";
+    public static final String DISTRIBUTED_ON = "distributed_on";
+    public static final String PAGE_PROCESSING_DELAY = "page_processing_delay";
 
     private final BlackHoleMetadata metadata;
-    private final BlackHoleHandleResolver connectorHandleResolver;
     private final BlackHoleSplitManager splitManager;
     private final BlackHolePageSourceProvider pageSourceProvider;
     private final BlackHolePageSinkProvider pageSinkProvider;
+    private final BlackHoleNodePartitioningProvider partitioningProvider;
+    private final TypeManager typeManager;
+    private final ExecutorService executorService;
 
-    public BlackHoleConnector(BlackHoleMetadata metadata,
-            BlackHoleHandleResolver connectorHandleResolver,
+    public BlackHoleConnector(
+            BlackHoleMetadata metadata,
             BlackHoleSplitManager splitManager,
             BlackHolePageSourceProvider pageSourceProvider,
-            BlackHolePageSinkProvider pageSinkProvider)
+            BlackHolePageSinkProvider pageSinkProvider,
+            BlackHoleNodePartitioningProvider partitioningProvider,
+            TypeManager typeManager,
+            ExecutorService executorService)
     {
         this.metadata = metadata;
-        this.connectorHandleResolver = connectorHandleResolver;
         this.splitManager = splitManager;
         this.pageSourceProvider = pageSourceProvider;
         this.pageSinkProvider = pageSinkProvider;
+        this.partitioningProvider = partitioningProvider;
+        this.typeManager = typeManager;
+        this.executorService = executorService;
     }
 
     @Override
-    public ConnectorHandleResolver getHandleResolver()
+    public ConnectorTransactionHandle beginTransaction(IsolationLevel isolationLevel, boolean readOnly)
     {
-        return connectorHandleResolver;
+        return BlackHoleTransactionHandle.INSTANCE;
     }
 
     @Override
-    public ConnectorMetadata getMetadata()
+    public boolean isSingleStatementWritesOnly()
+    {
+        // TODO: support transactional metadata
+        return true;
+    }
+
+    @Override
+    public ConnectorMetadata getMetadata(ConnectorTransactionHandle transactionHandle)
     {
         return metadata;
     }
@@ -107,6 +135,38 @@ public class BlackHoleConnector
                         FIELD_LENGTH_PROPERTY,
                         "Overwrite default length (16) of variable length columns, such as VARCHAR or VARBINARY",
                         16,
-                        false));
+                        false),
+                new PropertyMetadata<>(
+                        DISTRIBUTED_ON,
+                        "Distribution columns",
+                        typeManager.getParameterizedType(ARRAY, ImmutableList.of(TypeSignatureParameter.of(createUnboundedVarcharType().getTypeSignature()))),
+                        List.class,
+                        ImmutableList.of(),
+                        false,
+                        value -> ImmutableList.copyOf(((List<String>) value).stream()
+                                .map(name -> name.toLowerCase(ENGLISH))
+                                .collect(toList())),
+                        List.class::cast),
+                new PropertyMetadata<>(
+                        PAGE_PROCESSING_DELAY,
+                        "Sleep duration before processing each page",
+                        VARCHAR,
+                        Duration.class,
+                        new Duration(0, SECONDS),
+                        false,
+                        value -> Duration.valueOf((String) value),
+                        Duration::toString));
+    }
+
+    @Override
+    public ConnectorNodePartitioningProvider getNodePartitioningProvider()
+    {
+        return partitioningProvider;
+    }
+
+    @Override
+    public void shutdown()
+    {
+        executorService.shutdownNow();
     }
 }

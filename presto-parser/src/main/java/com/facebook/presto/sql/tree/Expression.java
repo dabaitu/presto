@@ -25,8 +25,11 @@ public abstract class Expression
         super(location);
     }
 
+    /**
+     * Accessible for {@link AstVisitor}, use {@link AstVisitor#process(Node, Object)} instead.
+     */
     @Override
-    public <R, C> R accept(AstVisitor<R, C> visitor, C context)
+    protected <R, C> R accept(AstVisitor<R, C> visitor, C context)
     {
         return visitor.visitExpression(this, context);
     }
@@ -34,6 +37,6 @@ public abstract class Expression
     @Override
     public final String toString()
     {
-        return ExpressionFormatter.formatExpression(this);
+        return ExpressionFormatter.formatExpression(this, Optional.empty()); // This will not replace parameters, but we don't have access to them here
     }
 }

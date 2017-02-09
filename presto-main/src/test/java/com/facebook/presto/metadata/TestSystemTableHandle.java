@@ -13,9 +13,8 @@
  */
 package com.facebook.presto.metadata;
 
-import com.facebook.presto.connector.system.SystemHandleResolver;
+import com.facebook.presto.connector.ConnectorId;
 import com.facebook.presto.connector.system.SystemTableHandle;
-import com.facebook.presto.spi.ConnectorHandleResolver;
 import com.facebook.presto.spi.ConnectorTableHandle;
 import com.facebook.presto.spi.SchemaTableName;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -23,25 +22,23 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Guice;
 import com.google.inject.Injector;
-import com.google.inject.Stage;
-import com.google.inject.multibindings.MapBinder;
 import io.airlift.json.JsonModule;
-import io.airlift.testing.Assertions;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.Map;
 
+import static io.airlift.testing.Assertions.assertEqualsIgnoreOrder;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertTrue;
 
 @Test(singleThreaded = true)
 public class TestSystemTableHandle
 {
-    private static final String CONNECTOR_ID = "system_connector_id";
-    private static final Map<String, Object> SCHEMA_AS_MAP = ImmutableMap.<String, Object>of(
-            "@type", "system",
-            "connectorId", CONNECTOR_ID,
+    private static final ConnectorId CONNECTOR_ID = new ConnectorId("system_connector_id");
+    private static final Map<String, Object> SCHEMA_AS_MAP = ImmutableMap.of(
+            "@type", "$system",
+            "connectorId", CONNECTOR_ID.toString(),
             "schemaName", "system_schema",
             "tableName", "system_table");
 
@@ -50,13 +47,7 @@ public class TestSystemTableHandle
     @BeforeMethod
     public void startUp()
     {
-        Injector injector = Guice.createInjector(Stage.PRODUCTION,
-                new JsonModule(),
-                new HandleJsonModule(),
-                binder -> {
-                    MapBinder<String, ConnectorHandleResolver> connectorHandleResolverBinder = MapBinder.newMapBinder(binder, String.class, ConnectorHandleResolver.class);
-                    connectorHandleResolverBinder.addBinding("system").toInstance(new SystemHandleResolver(CONNECTOR_ID));
-                });
+        Injector injector = Guice.createInjector(new JsonModule(), new HandleJsonModule());
 
         objectMapper = injector.getInstance(ObjectMapper.class);
     }
@@ -90,6 +81,6 @@ public class TestSystemTableHandle
             throws Exception
     {
         Map<String, Object> jsonMap = objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
-        Assertions.assertEqualsIgnoreOrder(jsonMap.entrySet(), expectedMap.entrySet());
+        assertEqualsIgnoreOrder(jsonMap.entrySet(), expectedMap.entrySet());
     }
 }

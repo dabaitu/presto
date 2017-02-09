@@ -30,7 +30,6 @@ import com.facebook.presto.sql.tree.ExpressionTreeRewriter;
 import com.facebook.presto.testing.TestingSession;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import org.jetbrains.annotations.NotNull;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
@@ -60,6 +59,7 @@ import static com.facebook.presto.operator.scalar.FunctionAssertions.createExpre
 import static com.facebook.presto.spi.type.BigintType.BIGINT;
 import static com.facebook.presto.spi.type.VarcharType.VARCHAR;
 import static com.facebook.presto.sql.analyzer.ExpressionAnalyzer.getExpressionTypesFromInput;
+import static java.util.Collections.emptyList;
 import static java.util.Locale.ENGLISH;
 import static java.util.stream.Collectors.toList;
 
@@ -108,7 +108,7 @@ public class PageProcessorBenchmark
         types = projections.stream().map(RowExpression::getType).collect(toList());
 
         inputPage = createPage(types, dictionaryBlocks);
-        processor = new ExpressionCompiler(createTestMetadataManager()).compilePageProcessor(getFilter(type), projections);
+        processor = new ExpressionCompiler(createTestMetadataManager()).compilePageProcessor(getFilter(type), projections).get();
     }
 
     @Benchmark
@@ -171,11 +171,10 @@ public class PageProcessorBenchmark
         }
         Map<Integer, Type> types = builder.build();
 
-        IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(TEST_SESSION, METADATA, SQL_PARSER, types, inputReferenceExpression);
+        IdentityHashMap<Expression, Type> expressionTypes = getExpressionTypesFromInput(TEST_SESSION, METADATA, SQL_PARSER, types, inputReferenceExpression, emptyList());
         return SqlToRowExpressionTranslator.translate(inputReferenceExpression, SCALAR, expressionTypes, METADATA.getFunctionRegistry(), METADATA.getTypeManager(), TEST_SESSION, true);
     }
 
-    @NotNull
     private static Page createPage(List<? extends Type> types, boolean dictionary)
     {
         if (dictionary) {

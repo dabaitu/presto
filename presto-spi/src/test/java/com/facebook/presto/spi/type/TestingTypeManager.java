@@ -35,7 +35,7 @@ public class TestingTypeManager
     public Type getType(TypeSignature signature)
     {
         for (Type type : getTypes()) {
-            if (signature.equals(type.getTypeSignature())) {
+            if (signature.getBase().equals(type.getTypeSignature().getBase())) {
                 return type;
             }
         }
@@ -43,9 +43,9 @@ public class TestingTypeManager
     }
 
     @Override
-    public Type getParameterizedType(String baseTypeName, List<TypeSignature> typeParameters, List<Object> literalParameters)
+    public Type getParameterizedType(String baseTypeName, List<TypeSignatureParameter> typeParameters)
     {
-        return getType(new TypeSignature(baseTypeName, typeParameters, literalParameters));
+        return getType(new TypeSignature(baseTypeName, typeParameters));
     }
 
     @Override
@@ -62,6 +62,18 @@ public class TestingTypeManager
 
     @Override
     public Optional<Type> getCommonSuperType(Type firstType, Type secondType)
+    {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean isTypeOnlyCoercion(Type actualType, Type expectedType)
+    {
+        return false;
+    }
+
+    @Override
+    public Optional<Type> coerceTypeBase(Type sourceType, String resultTypeBase)
     {
         throw new UnsupportedOperationException();
     }

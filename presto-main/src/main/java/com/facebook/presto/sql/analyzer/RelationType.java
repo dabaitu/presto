@@ -25,11 +25,9 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Predicate;
 
 import static com.facebook.presto.util.ImmutableCollectors.toImmutableList;
-import static com.facebook.presto.util.ImmutableCollectors.toImmutableSet;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkElementIndex;
 import static com.google.common.base.Predicates.not;
@@ -70,7 +68,7 @@ public class RelationType
      */
     public int indexOf(Field field)
     {
-        return fieldIndexes.get(field);
+        return requireNonNull(fieldIndexes.get(field));
     }
 
     /**
@@ -113,19 +111,6 @@ public class RelationType
     public int getAllFieldCount()
     {
         return allFields.size();
-    }
-
-    /**
-     * Returns all unique relations in this tuple.
-     * For detecting duplicate relations in a Join.
-     */
-    public Set<QualifiedName> getRelationAliases()
-    {
-        return allFields.stream()
-                .map(Field::getRelationAlias)
-                .filter(Optional::isPresent)
-                .map(Optional::get)
-                .collect(toImmutableSet());
     }
 
     /**
@@ -185,12 +170,24 @@ public class RelationType
             Field field = allFields.get(i);
             Optional<String> columnAlias = field.getName();
             if (columnAliases == null) {
-                fieldsBuilder.add(Field.newQualified(QualifiedName.of(relationAlias), columnAlias, field.getType(), field.isHidden()));
+                fieldsBuilder.add(Field.newQualified(
+                        QualifiedName.of(relationAlias),
+                        columnAlias,
+                        field.getType(),
+                        field.isHidden(),
+                        field.getOriginTable(),
+                        field.isAliased()));
             }
             else if (!field.isHidden()) {
                 // hidden fields are not exposed when there are column aliases
                 columnAlias = Optional.of(columnAliases.get(i));
-                fieldsBuilder.add(Field.newQualified(QualifiedName.of(relationAlias), columnAlias, field.getType(), false));
+                fieldsBuilder.add(Field.newQualified(
+                        QualifiedName.of(relationAlias),
+                        columnAlias,
+                        field.getType(),
+                        false,
+                        field.getOriginTable(),
+                        field.isAliased()));
             }
         }
 

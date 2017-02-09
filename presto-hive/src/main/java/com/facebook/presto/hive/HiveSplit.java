@@ -22,6 +22,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 
 import java.util.List;
+import java.util.Map;
+import java.util.OptionalInt;
 import java.util.Properties;
 
 import static com.google.common.base.MoreObjects.toStringHelper;
@@ -42,7 +44,9 @@ public class HiveSplit
     private final String table;
     private final String partitionName;
     private final TupleDomain<HiveColumnHandle> effectivePredicate;
+    private final OptionalInt bucketNumber;
     private final boolean forceLocalScheduling;
+    private final Map<Integer, HiveType> columnCoercions;
 
     @JsonCreator
     public HiveSplit(
@@ -56,8 +60,10 @@ public class HiveSplit
             @JsonProperty("schema") Properties schema,
             @JsonProperty("partitionKeys") List<HivePartitionKey> partitionKeys,
             @JsonProperty("addresses") List<HostAddress> addresses,
+            @JsonProperty("bucketNumber") OptionalInt bucketNumber,
             @JsonProperty("forceLocalScheduling") boolean forceLocalScheduling,
-            @JsonProperty("effectivePredicate") TupleDomain<HiveColumnHandle> effectivePredicate)
+            @JsonProperty("effectivePredicate") TupleDomain<HiveColumnHandle> effectivePredicate,
+            @JsonProperty("columnCoercions") Map<Integer, HiveType> columnCoercions)
     {
         requireNonNull(clientId, "clientId is null");
         checkArgument(start >= 0, "start must be positive");
@@ -69,7 +75,9 @@ public class HiveSplit
         requireNonNull(schema, "schema is null");
         requireNonNull(partitionKeys, "partitionKeys is null");
         requireNonNull(addresses, "addresses is null");
+        requireNonNull(bucketNumber, "bucketNumber is null");
         requireNonNull(effectivePredicate, "tupleDomain is null");
+        requireNonNull(columnCoercions, "columnCoercions is null");
 
         this.clientId = clientId;
         this.database = database;
@@ -81,8 +89,10 @@ public class HiveSplit
         this.schema = schema;
         this.partitionKeys = ImmutableList.copyOf(partitionKeys);
         this.addresses = ImmutableList.copyOf(addresses);
+        this.bucketNumber = bucketNumber;
         this.forceLocalScheduling = forceLocalScheduling;
         this.effectivePredicate = effectivePredicate;
+        this.columnCoercions = columnCoercions;
     }
 
     @JsonProperty
@@ -147,6 +157,12 @@ public class HiveSplit
     }
 
     @JsonProperty
+    public OptionalInt getBucketNumber()
+    {
+        return bucketNumber;
+    }
+
+    @JsonProperty
     public TupleDomain<HiveColumnHandle> getEffectivePredicate()
     {
         return effectivePredicate;
@@ -156,6 +172,12 @@ public class HiveSplit
     public boolean isForceLocalScheduling()
     {
         return forceLocalScheduling;
+    }
+
+    @JsonProperty
+    public Map<Integer, HiveType> getColumnCoercions()
+    {
+        return columnCoercions;
     }
 
     @Override
@@ -176,7 +198,6 @@ public class HiveSplit
                 .put("table", table)
                 .put("forceLocalScheduling", forceLocalScheduling)
                 .put("partitionName", partitionName)
-                .put("effectivePredicate", effectivePredicate)
                 .build();
     }
 

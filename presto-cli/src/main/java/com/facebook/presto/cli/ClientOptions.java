@@ -17,6 +17,7 @@ import com.facebook.presto.client.ClientSession;
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.net.HostAndPort;
+import com.sun.security.auth.module.UnixSystem;
 import io.airlift.airline.Option;
 import io.airlift.http.client.spnego.KerberosConfig;
 import io.airlift.units.Duration;
@@ -35,6 +36,7 @@ import java.util.TimeZone;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static java.nio.charset.StandardCharsets.US_ASCII;
+import static java.util.Collections.emptyMap;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MINUTES;
@@ -62,14 +64,24 @@ public class ClientOptions
     @Option(name = "--krb5-principal", title = "krb5 principal", description = "Kerberos principal to be used")
     public String krb5Principal;
 
+    @Option(name = "--krb5-disable-remote-service-hostname-canonicalization", title = "krb5 disable remote service hostname canonicalization", description = "Disable service hostname canonicalization using the DNS reverse lookup")
+    public boolean krb5DisableRemoteServiceHostnameCanonicalization;
+
     @Option(name = "--keystore-path", title = "keystore path", description = "Keystore path")
     public String keystorePath;
 
     @Option(name = "--keystore-password", title = "keystore password", description = "Keystore password")
     public String keystorePassword;
 
-    @Option(name = "--user", title = "user", description = "Username")
-    public String user = System.getProperty("user.name");
+    // Pick the user name for the logged in user.
+    // Do not let it be overridden by users.
+    public String user = new UnixSystem().getUsername();
+
+    @Option(name = "--truststore-path", title = "truststore path", description = "Truststore path")
+    public String truststorePath;
+
+    @Option(name = "--truststore-password", title = "truststore password", description = "Truststore password")
+    public String truststorePassword;
 
     @Option(name = "--source", title = "source", description = "Name of source making query")
     public String source = "presto-cli";
@@ -92,10 +104,10 @@ public class ClientOptions
     @Option(name = "--execute", title = "execute", description = "Execute specified statements and exit")
     public String execute;
 
-    @Option(name = "--output-format", title = "output-format", description = "Output format for batch mode (default: CSV)")
+    @Option(name = "--output-format", title = "output-format", description = "Output format for batch mode [ALIGNED, VERTICAL, CSV, TSV, CSV_HEADER, TSV_HEADER, NULL] (default: CSV)")
     public OutputFormat outputFormat = OutputFormat.CSV;
 
-    @Option(name = "--session", title = "session", description = "Session property (property can be used multiple times; format is key=value)")
+    @Option(name = "--session", title = "session", description = "Session property (property can be used multiple times; format is key=value; use 'SHOW SESSION' to see available properties)")
     public final List<ClientSessionProperty> sessionProperties = new ArrayList<>();
 
     @Option(name = "--socks-proxy", title = "socks-proxy", description = "SOCKS proxy to use for server connections")
@@ -126,6 +138,8 @@ public class ClientOptions
                 TimeZone.getDefault().getID(),
                 Locale.getDefault(),
                 toProperties(sessionProperties),
+                emptyMap(),
+                null,
                 debug,
                 clientRequestTimeout);
     }
@@ -142,7 +156,7 @@ public class ClientOptions
         if (krb5CredentialCachePath != null) {
             config.setCredentialCache(new File(krb5CredentialCachePath));
         }
-
+        config.setUseCanonicalHostname(!krb5DisableRemoteServiceHostnameCanonicalization);
         return config;
     }
 
